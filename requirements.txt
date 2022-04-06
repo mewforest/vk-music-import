@@ -1,0 +1,3 @@
+python-dotenv==0.20.0
+vk-api==11.9.7
+vk-captchasolver==1.0.0
