@@ -5,6 +5,7 @@ AUTH:
 https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 
 """
+import json
 import logging
 import os
 import re
@@ -13,6 +14,8 @@ from time import sleep
 import requests
 import vk_api
 from dotenv import load_dotenv
+
+
 # if os.getenv("BYPASS_CAPTCHA", "0") == "1":
 import vk_captchasolver as vc
 
@@ -55,23 +58,38 @@ vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"), captcha_handler=captcha_h
 vk = vk_session.get_api()
 tracklist = []
 user_info = vk.users.get()[0]
+title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+playlist_img = None
 logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
 
 if os.getenv("SPOTIFY_MODE", "0"):
     spotify_playlist_url = input('[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
-    spotiya_response = requests.post('https://spotya.ru/data.php', json={
+    tracklist_response = requests.post('https://spotya.ru/data.php', json={
         "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
         "type": "playlist"
     })
-    spotiya_text = spotiya_response.text.replace('\ufeff', '')
-    if len(spotiya_text) == 0:
+    tracklist_text = tracklist_response.text.replace('\ufeff', '')
+    if len(tracklist_text) == 0:
         logging.error("Не сумел прочитать треки из плейлиста. У тебя точно открытый плейлист?")
         exit()
-    logging.info(f"Нашел {spotiya_text.count('&#10;') + 1} треков в плейлисте")
-    tracklist_content = spotiya_text.replace('&#10;', '\n').strip()
+    logging.info(f"Нашел {tracklist_text.count('&#10;') + 1} треков в плейлисте")
+    tracklist_content = tracklist_text.replace('&#10;', '\n').strip()
     logging.info("Сохраняю в tracklist.txt...")
     with open("tracklist.txt", "w", encoding="utf-8") as f:
         f.write(tracklist_content)
+    playlist_info_response = requests.post('https://spotya.ru/data.php', json={
+        "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
+        "type": "poster"
+    })
+    logging.info("Загружаю метаданные...")
+    try:
+        playlist_info = json.loads(playlist_info_response.text.replace('\ufeff', ''))
+    except json.JSONDecodeError as e:
+        logging.warning("Не сумел загрузить метаданные из плейлиста. Пропускаю этот этап...")
+    else:
+        title_playlist = playlist_info["name"]
+        playlist_img = playlist_info["image"]
+        logging.info(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
 
 logging.info("Загружаю треклист...")
 with open("tracklist.txt", "r", encoding="utf-8") as f:
@@ -91,7 +109,6 @@ playlists = []
 
 for k, chunk_row in enumerate(chucked_rows, 1):
     logging.info("Создаем плейлист для добавления музыки...")
-    title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     if len(chucked_rows) > 1:
         title_playlist = f'[{k}/{len(chucked_rows)}] {title_playlist}'
     playlist_response = vk_session.method("audio.createPlaylist", {
@@ -176,13 +193,13 @@ with open('отчет.txt', 'w', encoding='utf-8') as f:
 Отчет о перенесенных треках в VK Музыку от {datetime.now().strftime('%d.%m.%Y %H:%M')}.
 
 Список найденных треков:
-{ok_tracks_str or '-'}
+{ok_tracks_str or '[x]'}
 
 Список найденных похожих треков:
-{questionable_tracks_str or '-'}
+{questionable_tracks_str or '[x]'}
 
 Список не найденных треков:
-{failed_tracks_str or '-'}
+{failed_tracks_str or '[x]'}
 
 - by Mew Forest (https://github.com/mewforest/vk-music-import)
     """)
@@ -192,3 +209,5 @@ if len(playlists) == 1:
     logging.info(f"Скрипт выполнен! Твой плейлист готов: {playlists[0]}")
 else:
     logging.info(f"Скрипт выполнен! Ваши плейлисты готовы: {', '.join(playlists)}")
+if playlist_img is not None:
+    logging.info(f"Дополнительно: скачать обложку плейлиста можно здесь: {playlist_img}")
