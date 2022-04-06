@@ -42,7 +42,7 @@ def captcha_handler(captcha):
 load_dotenv()
 logging.info("Авторизуюсь в ВКонтакте...")
 if os.getenv("VK_TOKEN") == "":
-    logging.warning("Не обнаружен токен VK API, запрашиваю авторизацию вручную...")
+    logging.warning("Не обнаружен токен VK API в .env файле, запрашиваю авторизацию вручную...")
     token_url = input("""
 [!] Вам нужно авторизоваться в ВКонтакте:
 1) Перейдите по ссылке ниже и нажмите "Разрешить:
@@ -54,6 +54,7 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
         logging.error("Некорректная ссылка. После того, как вы нажали \"Разрешить\" ссылка должна начинаться с \"https://oauth.vk.com/blank.html#access_token=\"")
         exit()
     os.environ["VK_TOKEN"] = token_match.group(1)
+    logging.info(f"На будущее: можно сохранить токен в .env файл, чтобы авторизация сохранилась (переменная VK_TOKEN)")
 vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"), captcha_handler=captcha_handler)
 vk = vk_session.get_api()
 tracklist = []
@@ -61,7 +62,7 @@ user_info = vk.users.get()[0]
 title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
 playlist_img = None
 logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
-
+sleep(0.1)
 if os.getenv("SPOTIFY_MODE", "0"):
     spotify_playlist_url = input('[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
     tracklist_response = requests.post('https://spotya.ru/data.php', json={
