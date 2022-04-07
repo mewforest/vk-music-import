@@ -8,6 +8,7 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
 import json
 import logging
 import os
+import platform
 import re
 from datetime import datetime
 from time import sleep
@@ -35,7 +36,7 @@ def captcha_handler(captcha):
         key = vc.solve(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
         logging.info("Текст на капче обнаружен, отправляю решение...")
     else:
-        key = input("\n[!] Чтобы продолжить, введи сюда капчу с картинки {0}:\n> ".format(captcha.get_url())).strip()
+        key = input("\n\n[!] Чтобы продолжить, введи сюда капчу с картинки {0}:\n> ".format(captcha.get_url())).strip()
     return captcha.try_again(key)
 
 
@@ -43,18 +44,38 @@ load_dotenv()
 logging.info("Авторизуюсь в ВКонтакте...")
 if os.getenv("VK_TOKEN") == "":
     logging.warning("Не обнаружен токен VK API в .env файле, запрашиваю авторизацию вручную...")
-    token_url = input("""
-[!] Вам нужно авторизоваться в ВКонтакте:
-1) Перейдите по ссылке ниже и нажмите "Разрешить:
+    if platform.system() == "Windows":
+        text_welcome = """
+[!] Вначале нужно авторизоваться в ВКонтакте:
+
+1) Перейди по ссылке ниже и нажми "Разрешить" (жми CTRL+C чтобы скопировать выделенный текст):
 https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
-2) Скопируйте ссылку из адресной строки браузера и вставьте сюда:
-> """.lstrip()).strip()
+
+2) Скопируй ссылку из адресной строки браузера и вставь его сюда (жми CTRL+V):
+
+> """.lstrip()
+    else:
+        text_welcome = """
+[!] Вначале нужно авторизоваться в ВКонтакте:
+1) Перейди по ссылке ниже и нажми "Разрешить":
+https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
+2) Скопируй ссылку из адресной строки браузера и вставь его сюда:
+> """.lstrip()
+    token_url = input(text_welcome).strip()
     token_match = re.match(r'https://oauth.vk.com/blank.html#access_token=([^&]+).+', token_url)
     if token_match is None:
         logging.error("Некорректная ссылка. После того, как вы нажали \"Разрешить\" ссылка должна начинаться с \"https://oauth.vk.com/blank.html#access_token=\"")
         exit()
     os.environ["VK_TOKEN"] = token_match.group(1)
-    logging.info(f"На будущее: можно сохранить токен в .env файл, чтобы авторизация сохранилась (переменная VK_TOKEN)")
+    logging.info("Сохраняю токен в .env файл...")
+    with open(".env", "r", encoding="utf-8") as f:
+        env_content = f.read().replace('\r', '').split()
+    for i, env_str in enumerate(env_content):
+        if env_str.startswith("VK_TOKEN=\""):
+            env_content[i] = f'VK_TOKEN="{token_match.group(1)}"'
+    with open(".env", "w", encoding="utf-8") as f:
+        f.write('\n'.join(env_content))
+    logging.info("Токен успешно сохранен в файл .env")
 vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"), captcha_handler=captcha_handler)
 vk = vk_session.get_api()
 tracklist = []
@@ -124,7 +145,12 @@ for k, chunk_row in enumerate(chucked_rows, 1):
     for i, track_row in enumerate(chunk_row, 1):
         artist, title = track_row
         logging.info(f"Ищу трек \"{title}\" от исполнителя {artist} ({i} из {len(tracklist)})...")
-        response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+        try:
+            response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+        except vk_api.VkApiError as e:
+            logging.warning(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
+            sleep(10)
+            response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
         if 'items' not in response:
             raise PermissionError(
                 f"VK временно заблокировал доступ к API, повторите позже. Доп. информация: {response}")
@@ -143,9 +169,9 @@ for k, chunk_row in enumerate(chucked_rows, 1):
             track_info = full_matched
             logging.info(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
         else:
-            questionable_tracks.append(track_row)
             partially_matched = response['items'][0]
             track_info = partially_matched
+            questionable_tracks.append(track_row + (partially_matched['artist'], partially_matched['title'], ))
             logging.info(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
                          f"{partially_matched['title']}\"")
         logging.info(
@@ -187,23 +213,44 @@ logging.info(f"Не найдено треков: {len(failed_tracks)}")
 
 logging.info(f"Всего перенесено треков: {added_count} из {len(text_lines)}")
 with open('отчет.txt', 'w', encoding='utf-8') as f:
-    questionable_tracks_str = '\n'.join(f"{t[0]} - {t[1]}" for t in questionable_tracks)
-    ok_tracks_str = '\n'.join(f"{t[0]} - {t[1]}" for t in ok_tracks)
-    failed_tracks_str = '\n'.join(f"{t[0]} - {t[1]}" for t in failed_tracks)
+    questionable_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"' for t in questionable_tracks)
+    ok_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in ok_tracks)
+    failed_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in failed_tracks)
+    playlists_str = '\n'.join(f'- {p}' for p in playlists)
     f.write(f"""
-Отчет о перенесенных треках в VK Музыку от {datetime.now().strftime('%d.%m.%Y %H:%M')}.
+[ Отчет о перенесенных треках в VK Музыку ]
 
-Список найденных треков:
+Дата/время: {datetime.now().strftime('%d.%m.%Y %H:%M')}.
+Название плейлиста (если доступно): {title_playlist or '-'}
+Изображение плейлиста (если доступно): {playlist_img or '-'}
+Найдено треков с точными совпадениями: {len(ok_tracks)}")
+Найдено треков с примерными совпадениями: {len(questionable_tracks)}")
+Не найдено треков: {len(failed_tracks)}")
+
+
+ССЫЛКИ:
+
+{playlists_str or '[x]'}
+
+
+СПИОК НАЙДЕННЫХ ТРЕКОВ:
+
 {ok_tracks_str or '[x]'}
 
-Список найденных похожих треков:
+
+СПИСОК НАЙДЕННЫХ ПОХОЖИХ ТРЕКОВ:
+
 {questionable_tracks_str or '[x]'}
 
-Список не найденных треков:
+
+СПИСОК НЕНАЙДЕННЫХ ТРЕКОВ:
+
 {failed_tracks_str or '[x]'}
 
-- by Mew Forest (https://github.com/mewforest/vk-music-import)
-    """)
+
+- by vk-music-import (Mew Forest)
+  src: https://github.com/mewforest/vk-music-import
+    """.strip())
 
 logging.info(f"Файл отчета сгенерирован в текущей папке (отчет.txt)")
 if len(playlists) == 1:

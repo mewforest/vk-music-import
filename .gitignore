@@ -133,3 +133,4 @@ dmypy.json
 .idea
 /отчет.txt
 /tracklist.txt
+/.gitignore
