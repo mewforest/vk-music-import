@@ -1,4 +1,4 @@
-if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
+п»їif (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))
 {
   $arguments = "& '" +$myinvocation.mycommand.definition + "'"
   Start-Process powershell -Verb runAs -ArgumentList $arguments
@@ -16,7 +16,7 @@ $text = @"
           )     (             .              '
          =\     /=
            )===(       *
-          /     \         ЖДИТЕ...)
+          /     \         Р–Р”РРўР•...)
           |     |
          /       \
          \       /
@@ -36,69 +36,72 @@ $installPath = "C:/tmp/vk-music-import"
 $pythonPath = "$installPath/bin"
 $installer = "$installPath/python-3.9.2-embed-amd64.zip"
 
-Write-Host "[~] Подождите, пока установятся зависимости (тут будет много букав, ничего не бойтесь и окно не закрывайте!)..."
-Write-Host "[~] Проверка установленных зависимостей..."
+Write-Host "[~] РџРѕРґРѕР¶РґРёС‚Рµ, РїРѕРєР° СѓСЃС‚Р°РЅРѕРІСЏС‚СЃСЏ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё (С‚СѓС‚ Р±СѓРґРµС‚ РјРЅРѕРіРѕ Р±СѓРєР°РІ, РЅРёС‡РµРіРѕ РЅРµ Р±РѕР№С‚РµСЃСЊ Рё РѕРєРЅРѕ РЅРµ Р·Р°РєСЂС‹РІР°Р№С‚Рµ!)..."
+Write-Host "[~] РџСЂРѕРІРµСЂРєР° СѓСЃС‚Р°РЅРѕРІР»РµРЅРЅС‹С… Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№..."
 
 if (Test-Path "$pythonPath/python.exe")
 {
-    Write-Host "[v] Отлично, Python 3.9 уже установлен локально"
+    Write-Host "[v] РћС‚Р»РёС‡РЅРѕ, Python 3.9 СѓР¶Рµ СѓСЃС‚Р°РЅРѕРІР»РµРЅ Р»РѕРєР°Р»СЊРЅРѕ"
 }
 else
 {
     if (Test-Path $installer)
     {
-        Write-Host "[~] Пропускаю скачивание установочного файла..."
+        Write-Host "[~] РџСЂРѕРїСѓСЃРєР°СЋ СЃРєР°С‡РёРІР°РЅРёРµ СѓСЃС‚Р°РЅРѕРІРѕС‡РЅРѕРіРѕ С„Р°Р№Р»Р°..."
     }
     else
     {
-        Write-Host "[~] Установка зависимостей для скрипта будет происходить в папку: $pythonPath..."
-        Write-Host "[~] Выполняю скачивание установочного файла Python 3.9..."
+        Write-Host "[~] РЈСЃС‚Р°РЅРѕРІРєР° Р·Р°РІРёСЃРёРјРѕСЃС‚РµР№ РґР»СЏ СЃРєСЂРёРїС‚Р° Р±СѓРґРµС‚ РїСЂРѕРёСЃС…РѕРґРёС‚СЊ РІ РїР°РїРєСѓ: $pythonPath..."
+        Write-Host "[~] Р’С‹РїРѕР»РЅСЏСЋ СЃРєР°С‡РёРІР°РЅРёРµ СѓСЃС‚Р°РЅРѕРІРѕС‡РЅРѕРіРѕ С„Р°Р№Р»Р° Python 3.9..."
         New-Item -ItemType Directory -Force -Path "$installPath"
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
         Invoke-WebRequest -Uri $url -OutFile $installer
         Invoke-WebRequest -Uri "https://bootstrap.pypa.io/get-pip.py" -OutFile "$installPath/get-pip.py"
     }
-    Write-Host "[~] Устанавливаю локально Python 3.9..."
+    Write-Host "[~] РЈСЃС‚Р°РЅР°РІР»РёРІР°СЋ Р»РѕРєР°Р»СЊРЅРѕ Python 3.9..."
     Expand-Archive -LiteralPath $installer -DestinationPath "$pythonPath"
     Remove-Item $pythonPath/python39._pth
     & $pythonPath/python.exe $installPath/get-pip.py
-    Write-Host "[v] Отлично, Python 3.9 установлен в ${pythonPath}."
+    Write-Host "[v] РћС‚Р»РёС‡РЅРѕ, Python 3.9 СѓСЃС‚Р°РЅРѕРІР»РµРЅ РІ ${pythonPath}."
 }
 
-Write-Host "[~] Проверяю зависимости библиотек в Python..."
-$freezeOutput = (& $pythonPath/Scripts/pip.exe freeze)
-$dependencies = @("python-dotenv==0.20.0", "vk-api==11.9.7", "vk-captchasolver==1.0.0")
-$isDepsInstalled = $true
-For ($i = 0; $i -lt $dependencies.Length; $i++) {
-    $dep = $dependencies[$i]
-    if ($freezeOutput -NotLike "*$dep*")
-    {
-        $isDepsInstalled = $false
-        Write-Host "[~] Жду установку: $dep..."
-    }
-}
+# Write-Host "[~] РџСЂРѕРІРµСЂСЏСЋ Р·Р°РІРёСЃРёРјРѕСЃС‚Рё Р±РёР±Р»РёРѕС‚РµРє РІ Python..."
+# $freezeOutput = (& $pythonPath/Scripts/pip.exe freeze)
+# $dependencies = @("python-dotenv==0.20.0", "vk-api==11.9.7", "vk-captchasolver==1.0.0")
+# $isDepsInstalled = $true
+# For ($i = 0; $i -lt $dependencies.Length; $i++) {
+#     $dep = $dependencies[$i]
+#     if ($freezeOutput -NotLike "*$dep*")
+#     {
+#         $isDepsInstalled = $false
+#         Write-Host "[~] Р–РґСѓ СѓСЃС‚Р°РЅРѕРІРєСѓ: $dep..."
+#     }
+# }
+# if (-Not $isDepsInstalled)
+# {
+#     Write-Host "[~] РЈСЃС‚Р°РЅРѕРІРєР° РЅРµРѕР±С…РѕРґРёРјС‹С… Р±РёР±Р»РёРѕС‚РµРє РІ Python..."
+#     & $pythonPath/Scripts/pip.exe install --user -r $PSScriptRoot/requirements.txt
+# }
 
-if (-Not $isDepsInstalled)
-{
-    Write-Host "[~] Установка необходимых библиотек в Python..."
-    & $pythonPath/Scripts/pip.exe install --user -r $PSScriptRoot/requirements.txt
-}
-Write-Host "[v] Библиотеки установлены, запускаем скрипт..."
+Write-Host "[~] РЈСЃС‚Р°РЅРѕРІРєР° РЅРµРѕР±С…РѕРґРёРјС‹С… Р±РёР±Р»РёРѕС‚РµРє РІ Python..."
+& $pythonPath/Scripts/pip.exe install --user -r $PSScriptRoot/requirements.txt
+
+Write-Host "[v] Р‘РёР±Р»РёРѕС‚РµРєРё СѓСЃС‚Р°РЅРѕРІР»РµРЅС‹, Р·Р°РїСѓСЃРєР°РµРј СЃРєСЂРёРїС‚..."
 #Clear-Host
 
 $successCats = @"
             *     ,MMM8&&&.            *
                   MMMM88&&&&&    .
                  MMMM88&&&&&&&
-     *           MM Работает &&
+     *           MM Р Р°Р±РѕС‚Р°РµС‚ &&
                  MMM88&&&&&&&&
                  'MMM88&&&&&&'
                    'MMM8&&&'      *
           |\___/|     /\___/\
           )     (     )    ~( .              '
          =\     /=   =\~    /=
-           )===(       ) ~ (     Установка
-          /     \     /     \    завершена :)
+           )===(       ) ~ (     РЈСЃС‚Р°РЅРѕРІРєР°
+          /     \     /     \    Р·Р°РІРµСЂС€РµРЅР° :)
           |     |     ) ~   (
          /       \   /     ~ \
          \       /   \~     ~/
@@ -111,20 +114,21 @@ $successCats = @"
 "@
 
 Write-Host $successCats
+Set-Location -Path $PSScriptRoot
 
 $ok = $true
 try {
-    & $pythonPath/python.exe $PSScriptRoot/vk-music-import.py
+    & $pythonPath/python.exe vk-music-import.py
 } catch {
     $ok = $false
 }
 
 if ($ok) {
-    Write-Host '[v] Скрипт завершил свою работу';
+    Write-Host '[v] РЎРєСЂРёРїС‚ Р·Р°РІРµСЂС€РёР» СЃРІРѕСЋ СЂР°Р±РѕС‚Сѓ';
 } else {
-    Write-Host '[x] Скрипт завершил свою работу с ошибками';
+    Write-Host '[x] РЎРєСЂРёРїС‚ Р·Р°РІРµСЂС€РёР» СЃРІРѕСЋ СЂР°Р±РѕС‚Сѓ СЃ РѕС€РёР±РєР°РјРё';
 }
-Write-Host -NoNewLine '[!] Нажмите Enter, чтобы закрыть...';
+Write-Host -NoNewLine '[!] РќР°Р¶РјРёС‚Рµ Enter, С‡С‚РѕР±С‹ Р·Р°РєСЂС‹С‚СЊ...';
 pause
 
 
