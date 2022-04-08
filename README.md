@@ -54,6 +54,24 @@ Billie Eilish - i love you
 - **Решение 1**: запустите скрипт через Python x64 с помощью Rosetta.
 - **Решение 2**: отключить распознавание капчи и вводить ответы вручную. Для этого закомментируйте строчку импорта `import vk_captchasolver as vc` в `vk-music-import.py` и выключите распознавание капчи в файле `.env`: `BYPASS_CAPTCHA="0"`.
 
+## Компиляция программы
+
+Вы можете скомпилировать данную утилиту самостоятельно, в том числе для своей операционной системы.
+
+- Установите Pyinstaller: `pip install pyinstaller`
+- Запустите компиляцию:
+  ```
+  pyinstaller --onefile --icon=app.ico --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_pr
+oviders_shared.dll;.\onnxruntime\capi" .\vk-music-import.py
+  ```
+- Скопируйте в папку `dist` файл с моделями капчи.
+
+
+## Дополнительный материал
+
+- [Spotya](https://spotya.ru/) - сервис для переноса музыки из Spotify в Яндекс Музыку, некоторые метаданные о плейлистах я собираю с его API.
+- [vkCaptchaBreaker](https://github.com/Defasium/vkCaptchaBreaker/) - модель для решения капчи ВК взята из данного репозитория
+
 ## Условия пользования
 
 Автор не несет ответственности за любые действия, которые предпринимаете с данным ПО, вы делаете всё на свой страх и риск.
