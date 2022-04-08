@@ -10,16 +10,32 @@ import logging
 import os
 import platform
 import re
+import sys
+import webbrowser
 from datetime import datetime
+from io import BytesIO
 from time import sleep
 import requests
 import vk_api
-# if os.getenv("BYPASS_CAPTCHA", "0") == "1":
-import vk_captchasolver as vc
+from PIL import Image
+import numpy as np
+import onnxruntime as rt
 from dotenv import load_dotenv
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
+
+
+def fix_relative_path(relative_path: str) -> str:
+    """
+    PyInstaller fix for relative paths
+    """
+    application_path = ''
+    if getattr(sys, 'frozen', False):
+        application_path = os.path.dirname(os.path.abspath(sys.executable))
+    elif __file__:
+        application_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.abspath(os.path.join(application_path, relative_path))
 
 
 def chunks(lst, n):
@@ -32,24 +48,39 @@ def captcha_handler(captcha):
     captcha_params = re.match(r"https://api\.vk\.com/captcha\.php\?sid=(\d+)&s=(\d+)", captcha_url)
     if captcha_params is not None and os.getenv("BYPASS_CAPTCHA", "0") == "1":
         logging.info("Появилась капча, пытаюсь автоматически её решить...")
-        key = vc.solve(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
+        key = solve(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
         logging.info("Текст на капче обнаружен, отправляю решение...")
     else:
         key = input("\n\n[!] Чтобы продолжить, введи сюда капчу с картинки {0}:\n> ".format(captcha.get_url())).strip()
     return captcha.try_again(key)
 
 
+def solve(sid, s):
+    response = requests.get(f'https://api.vk.com/captcha.php?sid={sid}&s={s}')
+    img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
+    x = np.array(img).reshape(1, -1)
+    x = np.expand_dims(x, axis=0)
+    x = x / np.float32(255.)
+    session = rt.InferenceSession(fix_relative_path('models/captcha_model.onnx'))
+    session2 = rt.InferenceSession(fix_relative_path('models/ctc_model.onnx'))
+    out = session.run(None, dict([(inp.name, x[n]) for n, inp in enumerate(session.get_inputs())]))
+    out = session2.run(None, dict([(inp.name, np.float32(out[n])) for n, inp in enumerate(session2.get_inputs())]))
+    char_map = ' 24578acdehkmnpqsuvxyz'
+    captcha = ''.join([char_map[c] for c in np.uint8(out[-1][out[0] > 0])])
+    return captcha
+
+
 def get_token():
     if platform.system() == "Windows":
         text_welcome = """
-[!] Необходимо авторизоваться во ВКонтакте:
+ [!] Необходимо авторизоваться во ВКонтакте:
 
-1) Перейди по ссылке ниже и нажми "Разрешить" (чтобы скопировать ссылку, выдели её и нажми CTRL+C):
+ 1) Перейди по ссылке ниже и нажми "Разрешить" (чтобы скопировать ссылку, выдели её и нажми CTRL+C):
 https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 
-2) Скопируй ссылку из адресной строки браузера и вставь её сюда (жми CTRL+V):
+ 2) Скопируй ссылку из адресной строки браузера и вставь её сюда (жми CTRL+V):
 
-> """.lstrip()
+ > """.lstrip()
     else:
         text_welcome = """
 [!] Необходимо авторизоваться во ВКонтакте:
@@ -57,12 +88,15 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
 https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 2) Скопируй ссылку из адресной строки браузера и вставь её сюда:
 > """.lstrip()
-    token_url = input(text_welcome).strip()
-    token_match = re.match(r'https://oauth.vk.com/blank.html#access_token=([^&]+).+', token_url)
-    if token_match is None:
-        logging.error(
-            "Некорректная ссылка. После того, как вы нажали \"Разрешить\" ссылка должна начинаться с \"https://oauth.vk.com/blank.html#access_token=\"")
-        exit()
+    token_match = None
+    while token_match is None:
+        token_url = input(text_welcome).strip()
+        token_match = re.match(r'https://oauth.vk.com/blank.html#access_token=([^&]+).+', token_url)
+        if token_match is not None:
+            break
+        logging.error("Некорректная ссылка. После того, как вы нажали \"Разрешить\" ссылка должна начинаться с "
+                      "\"https://oauth.vk.com/blank.html#access_token=\"")
+        text_welcome = "[!] Вставьте корректную ссылку\n> "
     os.environ["VK_TOKEN"] = token_match.group(1)
     logging.info("Сохраняю токен в .env файл...")
     with open(".env", "r", encoding="utf-8") as f:
@@ -75,7 +109,7 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
     logging.info("Токен успешно сохранен в файл .env")
 
 
-if __name__ == "__main__":
+def main():
     # VK Authentication
     logging.info("Авторизуюсь в ВКонтакте...")
     if os.getenv("VK_TOKEN") == "":
@@ -92,20 +126,22 @@ if __name__ == "__main__":
         user_info = vk.users.get()[0]
         logging.info("Токен в файле .env успешно сброшен")
     title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+    report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
     playlist_img = None
     logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
     sleep(0.1)
     # Getting Spotify playlist
     if os.getenv("SPOTIFY_MODE", "0"):
-        spotify_playlist_url = input('\n[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
-        tracklist_response = requests.post('https://spotya.ru/data.php', json={
-            "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
-            "type": "playlist"
-        })
-        tracklist_text = tracklist_response.text.replace('\ufeff', '')
-        if len(tracklist_text) == 0:
-            logging.error("Не сумел прочитать треки из плейлиста. У тебя точно открытый плейлист?")
-            exit()
+        while True:
+            spotify_playlist_url = input('\n[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
+            tracklist_response = requests.post('https://spotya.ru/data.php', json={
+                "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
+                "type": "playlist"
+            })
+            tracklist_text = tracklist_response.text.replace('\ufeff', '')
+            if len(tracklist_text) != 0:
+                break
+            logging.warning("Не сумел прочитать треки из плейлиста. У тебя точно открытый плейлист?")
         logging.info(f"Нашел {tracklist_text.count('&#10;') + 1} треков в плейлисте")
         tracklist_content = tracklist_text.replace('&#10;', '\n').strip()
         logging.info("Сохраняю в tracklist.txt...")
@@ -196,15 +232,16 @@ if __name__ == "__main__":
             except vk_api.VkApiError as e:
                 logging.warning(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд...")
                 sleep(10)
+                delayed_response = None
                 try:
-                    add_to_playlist_response = vk_session.method("audio.addToPlaylist", {
+                    delayed_response = vk_session.method("audio.addToPlaylist", {
                         "owner_id": user_info['id'],
                         "playlist_id": playlist_response['id'],
                         "audio_ids": track_info['id'],
                     })
                 except vk_api.VkApiError as e:
-                    logging.warning(f"Не получается повторно добавить трек в плейлист \"{e}\". "
-                                    f"Если ошибка повторится, перезапустите скрипт спустя некоторое время.")
+                    logging.warning(f"Не получается повторно добавить трек в плейлист \"{e}\". Если ошибка повторится, "
+                                    f"перезапустите скрипт спустя некоторое время ({delayed_response}).")
             else:
                 if len(add_to_playlist_response) == 0:
                     logging.warning(f"Ошибка добавления в плейлист: возвращен пустой ответ, возможно, "
@@ -223,7 +260,7 @@ if __name__ == "__main__":
     logging.info(f"Не найдено треков: {len(failed_tracks)}")
 
     logging.info(f"Всего перенесено треков: {added_count} из {len(text_lines)}")
-    with open('отчет.txt', 'w', encoding='utf-8') as f:
+    with open(fix_relative_path(report_filename), 'w', encoding='utf-8') as f:
         questionable_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"' for t in questionable_tracks)
         ok_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in ok_tracks)
         failed_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in failed_tracks)
@@ -234,8 +271,8 @@ if __name__ == "__main__":
 Дата/время: {datetime.now().strftime('%d.%m.%Y %H:%M')}.
 Название плейлиста (если доступно): {title_playlist or '-'}
 Изображение плейлиста (если доступно): {playlist_img or '-'}
-Найдено треков с точными совпадениями: {len(ok_tracks)}")
-Найдено треков с примерными совпадениями: {len(questionable_tracks)}")
+Найдено треков с точными совпадениями: {len(ok_tracks)}
+Найдено треков с примерными совпадениями: {len(questionable_tracks)}
 Не найдено треков: {len(failed_tracks)}")
 
 
@@ -263,10 +300,22 @@ if __name__ == "__main__":
 src: https://github.com/mewforest/vk-music-import
     """.strip())
 
-    logging.info(f"Файл отчета сгенерирован в текущей папке (отчет.txt)")
+    logging.info(f"Файл отчета сгенерирован в текущей папке (\"{report_filename}\")")
     if len(playlists) == 1:
         logging.info(f"Скрипт выполнен! Твой плейлист готов: {playlists[0]}")
     else:
         logging.info(f"Скрипт выполнен! Ваши плейлисты готовы: {', '.join(playlists)}")
     if playlist_img is not None:
         logging.info(f"Дополнительно: скачать обложку плейлиста можно здесь: {playlist_img}")
+    if platform.system() == "Windows":
+        webbrowser.open(fix_relative_path(report_filename))
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except Exception as e:
+        logging.exception(e)
+    finally:
+        input("Нажмите Enter, чтобы завершить работу программы...")
+
