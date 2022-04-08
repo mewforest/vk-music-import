@@ -52,7 +52,7 @@ Billie Eilish - i love you
 Это происходит из-за проблем с установкой onnx-runtime.
 
 - **Решение 1**: запустите скрипт через Python x64 с помощью Rosetta.
-- **Решение 2**: отключить распознавание капчи и вводить ответы вручную. Для этого закомментируйте строчку импорта `import vk_captchasolver as vc` в `vk-music-import.py` и выключите распознавание капчи в файле `.env`: `BYPASS_CAPTCHA="0"`.
+- **Решение 2**: отключить распознавание капчи и вводить ответы вручную. Для этого закомментируйте строчку импорта `import onnxruntime as rt` в `vk-music-import.py` и выключите распознавание капчи в файле `.env`: `BYPASS_CAPTCHA="0"`.
 
 ## Компиляция программы
 
@@ -61,8 +61,7 @@ Billie Eilish - i love you
 - Установите Pyinstaller: `pip install pyinstaller`
 - Запустите компиляцию:
   ```
-  pyinstaller --onefile --icon=app.ico --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_pr
-oviders_shared.dll;.\onnxruntime\capi" .\vk-music-import.py
+  pyinstaller --onefile --icon=app.ico --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_providers_shared.dll;.\onnxruntime\capi" .\vk-music-import.py
   ```
 - Скопируйте в папку `dist` файл с моделями капчи.
 
