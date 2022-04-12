@@ -17,14 +17,16 @@
 ## Как запустить? (для обычных пользователей)
 
 Инструкция по использованию на Windows:
-- Скачайте и распакуйте архив ([**vk-music-import_win32.zip**](https://github.com/mewforest/vk-music-import/releases/download/0.1/vk-music-import_win32.zip)) в любую папку
+- Скачайте и распакуйте архив ([vk-music-import_win32.zip](https://github.com/mewforest/vk-music-import/releases/download/0.1/vk-music-import_win32.zip)) в любую папку
 - Запустите исполняемый файл и следуйте инструкциям:
 
 ![2022-04-08_12h22_59](https://user-images.githubusercontent.com/15357833/162406868-14b4a26f-48c9-431a-8295-4e21bad45f4b.png)
 
+**Более подробная инструкция на DTF:** [Переносим плейлисты из Spotify в VK Музыку (подробное руководство)](https://dtf.ru/u/292194-mew-forest/1152260-perenosim-pleylisty-iz-spotify-v-vk-muzyku-podrobnoe-rukovodstvo).
+
 ## Как запустить? (для продвинутых пользователей)
 
-1. Убедитесь, что у вас установлен Python 3.8 или выше.
+1. Убедитесь, что у вас установлен Python 3.8 (или 3.9).
 2. Установите зависимости:
    ```
    pip install -r requirements.txt
@@ -33,7 +35,7 @@
    ```
    python vk-music-import.py
    ```
-4. После переноса треков, скрипт сгенерирует отчет и выведет ссылку на плейлист с импортированными треками.
+4. После переноса треков, скрипт сгенерирует отчет и выведет ссылку на плейлисты с импортированными треками.
    
 ## Настройки
 
@@ -56,18 +58,25 @@ Billie Eilish - i love you
 
 ## Компиляция программы
 
-Вы можете скомпилировать данную утилиту самостоятельно, в том числе для своей операционной системы.
+Вы можете скомпилировать данную утилиту самостоятельно, в том числе для своей операционной системы (в инструкции пример для Windows).
 
-- Установите Pyinstaller: `pip install pyinstaller`
+- Создайте виртуальное окружение и установите зависимости и Pyinstaller:
+  ```
+  python -m virtualenv venv
+  venv\Scripts\activate
+  pip install -r requirements.txt
+  pip install pyinstaller
+  ```
 - Запустите компиляцию:
   ```
   pyinstaller --onefile --icon=app.ico --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_providers_shared.dll;.\onnxruntime\capi" .\vk-music-import.py
   ```
-- Скопируйте в папку `dist` файл с моделями капчи.
+- Скопируйте в папку `dist` файл с моделями капчи (`models`).
 
 
-## Дополнительный материал
+## Полезный материал
 
+- [Айти заметки Сергея Струкова](https://t.me/mewnotes) - телеграм-канал автора сервиса.
 - [Spotya](https://spotya.ru/) - сервис для переноса музыки из Spotify в Яндекс Музыку, некоторые метаданные о плейлистах я собираю с его API.
 - [vkCaptchaBreaker](https://github.com/Defasium/vkCaptchaBreaker/) - модель для решения капчи ВК взята из данного репозитория
 
