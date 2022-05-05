@@ -74,9 +74,14 @@ Billie Eilish - i love you
 - Скопируйте в папку `dist` файл с моделями капчи (`models`).
 
 
+## Поддержка пользователей
+
+- **[Оставить запрос на фичу/сообщить о баге](https://github.com/mewforest/vk-music-import/issues/new/choose)**
+
+
 ## Полезный материал
 
-- [Айти заметки Сергея Струкова](https://t.me/mewnotes) - телеграм-канал автора сервиса.
+- [Айти заметки](https://t.me/mewnotes) - телеграм-канал автора сервиса.
 - [Spotya](https://spotya.ru/) - сервис для переноса музыки из Spotify в Яндекс Музыку, некоторые метаданные о плейлистах я собираю с его API.
 - [vkCaptchaBreaker](https://github.com/Defasium/vkCaptchaBreaker/) - модель для решения капчи ВК взята из данного репозитория
 
