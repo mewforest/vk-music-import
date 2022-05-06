@@ -21,6 +21,7 @@ from PIL import Image
 import numpy as np
 import onnxruntime as rt
 from dotenv import load_dotenv
+from vk_api import Captcha
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO)
@@ -28,7 +29,7 @@ logging.basicConfig(level=logging.INFO)
 
 def fix_relative_path(relative_path: str) -> str:
     """
-    PyInstaller fix for relative paths
+    Фикс относительных путей PyInstaller
     """
     application_path = ''
     if getattr(sys, 'frozen', False):
@@ -39,23 +40,32 @@ def fix_relative_path(relative_path: str) -> str:
 
 
 def chunks(lst, n):
+    """
+    Разделяет список на чанки
+    """
     for i in range(0, len(lst), n):
         yield lst[i:i + n]
 
 
-def captcha_handler(captcha):
+def captcha_handler(captcha: Captcha):
+    """
+    Хендлер для обработки капчи из VK
+    """
     captcha_url = captcha.get_url()
     captcha_params = re.match(r"https://api\.vk\.com/captcha\.php\?sid=(\d+)&s=(\d+)", captcha_url)
     if captcha_params is not None and os.getenv("BYPASS_CAPTCHA", "0") == "1":
         logging.info("Появилась капча, пытаюсь автоматически её решить...")
-        key = solve(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
+        key = solve_captcha(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
         logging.info("Текст на капче обнаружен, отправляю решение...")
     else:
         key = input("\n\n[!] Чтобы продолжить, введи сюда капчу с картинки {0}:\n> ".format(captcha.get_url())).strip()
     return captcha.try_again(key)
 
 
-def solve(sid, s):
+def solve_captcha(sid, s):
+    """
+    Обработчик капчи с помощью машинного зрения
+    """
     response = requests.get(f'https://api.vk.com/captcha.php?sid={sid}&s={s}')
     img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
     x = np.array(img).reshape(1, -1)
@@ -71,6 +81,9 @@ def solve(sid, s):
 
 
 def get_token():
+    """
+    Функция для запроса токена от ВКонтакте
+    """
     if platform.system() == "Windows":
         text_welcome = """
  [!] Необходимо авторизоваться во ВКонтакте:
@@ -131,7 +144,7 @@ def main():
     logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
     sleep(0.1)
     # Getting Spotify playlist
-    if os.getenv("SPOTIFY_MODE", "0"):
+    if os.getenv("SPOTIFY_MODE", "0") == "1":
         while True:
             spotify_playlist_url = input('\n[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
             tracklist_response = requests.post('https://spotya.ru/data.php', json={
@@ -155,15 +168,19 @@ def main():
         try:
             playlist_info = json.loads(playlist_info_response.text.replace('\ufeff', ''))
         except json.JSONDecodeError as e:
-            logging.warning("Не сумел загрузить метаданные из плейлиста. Пропускаю этот этап...")
+            logging.warning(f"Не сумел загрузить метаданные из плейлиста ({e}). Пропускаю этот этап...")
         else:
             title_playlist = playlist_info["name"]
             playlist_img = playlist_info["image"]
             logging.info(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
     # Open tracklist
     logging.info("Загружаю треклист...")
-    with open("tracklist.txt", "r", encoding="utf-8") as f:
-        text_lines = f.readlines()
+    try:
+        with open("tracklist.txt", "r", encoding="utf-8") as f:
+            text_lines = f.readlines()
+    except FileNotFoundError:
+        logging.warning("Не найден треклист (tracklist.txt). Вы не забыли его предварительно создать?")
+        return
     for text_line in text_lines:
         parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
         if parsed_row is not None:
@@ -210,7 +227,6 @@ def main():
                 if item['artist'].lower() == artist.lower() and title.lower() == item['title'].lower():
                     full_matched = item
                     break
-            track_info = None
             if full_matched is not None:
                 ok_tracks.append(track_row)
                 track_info = full_matched
@@ -273,7 +289,7 @@ def main():
 Изображение плейлиста (если доступно): {playlist_img or '-'}
 Найдено треков с точными совпадениями: {len(ok_tracks)}
 Найдено треков с примерными совпадениями: {len(questionable_tracks)}
-Не найдено треков: {len(failed_tracks)}")
+Не найдено треков: {len(failed_tracks)}
 
 
 ССЫЛКИ:
@@ -296,8 +312,11 @@ def main():
 {failed_tracks_str or '[x]'}
 
 
-- by vk-music-import (Mew Forest)
-src: https://github.com/mewforest/vk-music-import
+♫ Музыка перенесена с помощью vk-music-import
+
+- Телеграм-канал автора: https://t.me/mewnotes
+- Поддержать разработчика: https://mewforest.github.io/donate/
+- Исходный код: https://github.com/mewforest/vk-music-import
     """.strip())
 
     logging.info(f"Файл отчета сгенерирован в текущей папке (\"{report_filename}\")")
