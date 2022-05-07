@@ -23,7 +23,7 @@ import onnxruntime as rt
 from dotenv import load_dotenv
 from vk_api import Captcha
 
-load_dotenv()
+
 logging.basicConfig(level=logging.INFO)
 
 
@@ -111,22 +111,22 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
                       "\"https://oauth.vk.com/blank.html#access_token=\"")
         text_welcome = "[!] Вставьте корректную ссылку\n> "
     os.environ["VK_TOKEN"] = token_match.group(1)
-    logging.info("Сохраняю токен в .env файл...")
-    with open(".env", "r", encoding="utf-8") as f:
+    logging.info("Сохраняю токен в config.env файл...")
+    with open("config.env", "r", encoding="utf-8") as f:
         env_content = f.read().replace('\r', '').split()
     for i, env_str in enumerate(env_content):
         if env_str.startswith("VK_TOKEN=\""):
             env_content[i] = f'VK_TOKEN="{token_match.group(1)}"'
-    with open(".env", "w", encoding="utf-8") as f:
+    with open("config.env", "w", encoding="utf-8") as f:
         f.write('\n'.join(env_content))
-    logging.info("Токен успешно сохранен в файл .env")
+    logging.info("Токен успешно сохранен в файл config.env")
 
 
 def main():
     # VK Authentication
     logging.info("Авторизуюсь в ВКонтакте...")
     if os.getenv("VK_TOKEN") == "":
-        logging.warning("Не обнаружен токен VK API в .env файле, запрашиваю авторизацию вручную...")
+        logging.warning("Не обнаружен токен VK API в config.env файле, запрашиваю авторизацию вручную...")
         get_token()
     vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"), captcha_handler=captcha_handler)
     vk = vk_session.get_api()
@@ -137,7 +137,7 @@ def main():
         logging.error(f"Кажется, ваш токен устарел, необходимо заново авторизоваться (ошибка: {e})")
         get_token()
         user_info = vk.users.get()[0]
-        logging.info("Токен в файле .env успешно сброшен")
+        logging.info("Токен в файле config.env успешно сброшен")
     title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
     report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
     playlist_img = None
@@ -186,6 +186,8 @@ def main():
         if parsed_row is not None:
             tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
     # Search and add tracks
+    if os.getenv("REVERSE") == "1":
+        tracklist.reverse()
     logging.info(f"Буду искать {len(tracklist)} из {len(text_lines)} треков...")
     ok_tracks = []
     failed_tracks = []
@@ -231,14 +233,17 @@ def main():
                 ok_tracks.append(track_row)
                 track_info = full_matched
                 logging.info(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
+            elif os.getenv("STRICT_SEARCH") == "1":
+                failed_tracks.append(track_row)
+                logging.warning(f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
+                continue
             else:
                 partially_matched = response['items'][0]
                 track_info = partially_matched
                 questionable_tracks.append(track_row + (partially_matched['artist'], partially_matched['title'],))
                 logging.info(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
                              f"{partially_matched['title']}\"")
-            logging.info(
-                f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
+            logging.info(f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
             try:
                 add_to_playlist_response = vk_session.method("audio.addToPlaylist", {
                     "owner_id": user_info['id'],
@@ -263,6 +268,18 @@ def main():
                     logging.warning(f"Ошибка добавления в плейлист: возвращен пустой ответ, возможно, "
                                     f"у вас нет прав на добавление трека (id: {track_info['id']})")
                     continue
+            if os.getenv("ADD_TO_LIBRARY") == "1":
+                logging.info(
+                    f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в мои аудиозаписи...")
+                try:
+                    vk_session.method("audio.add", {
+                        'audio_id': track_info['id'],
+                        'owner_id': track_info['owner_id']
+                    })
+                except vk_api.VkApiError as e:
+                    logging.warning(f"Не получается добавить трек в мои аудиозаписи, ошибка: \"{e}\". Пропускаю трек...")
+                else:
+                    logging.info(f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
             logging.info(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
             added_count += 1
 
@@ -331,6 +348,7 @@ def main():
 
 
 if __name__ == "__main__":
+    load_dotenv(fix_relative_path('config.env'))
     try:
         main()
     except Exception as e:
