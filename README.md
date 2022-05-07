@@ -20,7 +20,7 @@
 Инструкция по использованию на Windows:
 
 - Скачайте и распакуйте
-  архив ([vk-music-import_win32.zip](https://github.com/mewforest/vk-music-import/releases/download/0.1/vk-music-import_win32.zip))
+  архив ([vk-music-import_win32.zip](https://github.com/mewforest/vk-music-import/releases/download/0.2/vk-music-import-v0.2_win32.zip))
   в любую папку
 - Запустите исполняемый файл и следуйте инструкциям:
 
