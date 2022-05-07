@@ -19,8 +19,8 @@
 
 Инструкция по использованию на Windows:
 
-- Скачайте и распакуйте
-  архив ([vk-music-import_win32.zip](https://github.com/mewforest/vk-music-import/releases/download/0.2/vk-music-import-v0.2_win32.zip))
+- Скачайте и распакуйте 
+  архив ([vk-music-import-v0.2_win32.zip](https://github.com/mewforest/vk-music-import/releases))
   в любую папку
 - Запустите исполняемый файл и следуйте инструкциям:
 
@@ -105,7 +105,8 @@ Billie Eilish - i love you
 
 ## Поддержка пользователей
 
-- **[Оставить запрос на фичу/сообщить о баге](https://github.com/mewforest/vk-music-import/issues/new/choose)**
+- **[Оставить запрос на фичу или сообщить о баге](https://github.com/mewforest/vk-music-import/issues/new/choose)**
+- [Поблагодарить разработчика](https://mewforest.github.io/donate/)
 
 ## Полезный материал
 
