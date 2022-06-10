@@ -185,6 +185,11 @@ def main():
         parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
         if parsed_row is not None:
             tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
+        parsed_row = re.match(r"^(\S+)\s(.+)", text_line)
+        if parsed_row is not None:
+            track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
+            tracklist.append(track_info)
+            logging.warning(f"В строчке треклиста нет дефиса, разделил вручную: {track_info[0]} - {track_info[1]}")
     # Search and add tracks
     if os.getenv("REVERSE") == "1":
         tracklist.reverse()
