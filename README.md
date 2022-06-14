@@ -20,11 +20,11 @@
 Инструкция по использованию на Windows:
 
 - Скачайте и распакуйте 
-  архив ([vk-music-import-v0.2_win32.zip](https://github.com/mewforest/vk-music-import/releases))
+  архив ([vk-music-import-vX.X_win32.zip](https://github.com/mewforest/vk-music-import/releases))
   в любую папку
 - Запустите исполняемый файл и следуйте инструкциям:
 
-![2022-04-08_12h22_59](https://user-images.githubusercontent.com/15357833/162406868-14b4a26f-48c9-431a-8295-4e21bad45f4b.png)
+![2022-04-08_12h22_59](https://user-images.githubusercontent.com/15357833/167272239-55fc04eb-27c1-40bc-abe9-596390c64459.png)
 
 **Более подробная инструкция на
 DTF:** [Переносим плейлисты из Spotify в VK Музыку (подробное руководство)](https://dtf.ru/u/292194-mew-forest/1152260-perenosim-pleylisty-iz-spotify-v-vk-muzyku-podrobnoe-rukovodstvo)
@@ -93,17 +93,21 @@ Billie Eilish - i love you
 для Windows).
 
 - Создайте виртуальное окружение и установите зависимости и Pyinstaller:
-  ```
+  ```shell
   python -m virtualenv venv
   venv\Scripts\activate
   pip install -r requirements.txt
   pip install pyinstaller
   ```
 - Запустите компиляцию:
-  ```
+  ```shell
   pyinstaller --onefile --icon=app.ico --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_providers_shared.dll;.\onnxruntime\capi" .\vk-music-import.py
   ```
-- Скопируйте в папку `dist` файл с моделями капчи (`models`).
+- Скопируйте в папку `dist` файл с моделями капчи (`models`) и файл конфигурации (`config.env`):
+  ```shell
+  cp -r .\models\ .\dist\models
+  cp .\config.env .\dist
+  ```
 
 ## Поддержка пользователей
 
@@ -117,6 +121,7 @@ Billie Eilish - i love you
   плейлистах я собираю с его API.
 - [vkCaptchaBreaker](https://github.com/Defasium/vkCaptchaBreaker/) - модель для решения капчи ВК взята из данного
   репозитория
+- [VK API Reference](https://vodka2.github.io/vk-audio-token/) - описание методов VK API для доступа к аудиозаписям.
 
 ## Условия пользования
 
