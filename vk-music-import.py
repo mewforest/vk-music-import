@@ -89,7 +89,7 @@ def get_token():
  [!] Необходимо авторизоваться во ВКонтакте:
 
  1) Перейди по ссылке ниже и нажми "Разрешить" (чтобы скопировать ссылку, выдели её и нажми CTRL+C):
-https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
+https://bit.ly/vk-music-import
 
  2) Скопируй ссылку из адресной строки браузера и вставь её сюда (жми CTRL+V):
 
@@ -98,7 +98,7 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
         text_welcome = """
 [!] Необходимо авторизоваться во ВКонтакте:
 1) Перейди по ссылке ниже и нажми "Разрешить":
-https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
+https://bit.ly/vk-music-import
 2) Скопируй ссылку из адресной строки браузера и вставь её сюда:
 > """.lstrip()
     token_match = None
@@ -185,7 +185,7 @@ def main():
         parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
         if parsed_row is not None:
             tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
-            break
+            continue
         parsed_row = re.match(r"^(\S+)\s(.+)", text_line)
         if parsed_row is not None:
             track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
