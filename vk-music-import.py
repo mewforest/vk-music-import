@@ -9,6 +9,7 @@ import json
 import logging
 import os
 import platform
+import random
 import re
 import sys
 import webbrowser
@@ -51,14 +52,20 @@ def captcha_handler(captcha: Captcha):
     """
     Хендлер для обработки капчи из VK
     """
+    start_time = datetime.now()
     captcha_url = captcha.get_url()
     captcha_params = re.match(r"https://api\.vk\.com/captcha\.php\?sid=(\d+)&s=(\d+)", captcha_url)
     if captcha_params is not None and os.getenv("BYPASS_CAPTCHA", "0") == "1":
         logging.info("Появилась капча, пытаюсь автоматически её решить...")
         key = solve_captcha(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
-        logging.info("Текст на капче обнаружен, отправляю решение...")
     else:
         key = input("\n\n[!] Чтобы продолжить, введи сюда капчу с картинки {0}:\n> ".format(captcha.get_url())).strip()
+    elapsed_time = datetime.now() - start_time
+    logging.info(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
+    timeout_seconds = 20 - elapsed_time.seconds + random.randint(0, 3)
+    logging.info(f"Чтобы VK не ругался, жду {timeout_seconds} сек...")
+    sleep(timeout_seconds)
+    logging.info("Отправляю решение капчи...")
     return captcha.try_again(key)
 
 
@@ -89,7 +96,7 @@ def get_token():
  [!] Необходимо авторизоваться во ВКонтакте:
 
  1) Перейди по ссылке ниже и нажми "Разрешить" (чтобы скопировать ссылку, выдели её и нажми CTRL+C):
-https://bit.ly/vk-music-import
+https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=audio,offline&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 
  2) Скопируй ссылку из адресной строки браузера и вставь её сюда (жми CTRL+V):
 
