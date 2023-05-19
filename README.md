@@ -67,7 +67,7 @@ DTF:** [Переносим плейлисты из Spotify в VK Музыку (�
 
 ### Добавление в мои аудиозаписи
 
-По-умолчанию треки переносятся без добавления в раздел "мои аудиозаписи". Чтобы включить добавление музыки в свою
+По-умолчанию треки переносятся в плейлист без добавления в раздел "мои аудиозаписи". Чтобы включить добавление музыки в свою
 медиатеку ВКонтакте, в `config.env` включите соответственный пункт: `ADD_TO_LIBRARY="1"`. 
 
 **Используйте с осторожностью:** ВКонтакте не проверяет трек на наличие в аудиозаписях, так что при импорте возможны дубликаты.
@@ -119,9 +119,9 @@ Billie Eilish - i love you
   pip install -r requirements.txt
   pip install pyinstaller
   ```
-- Запустите компиляцию:
+- Запустите компиляцию (да, это больно):
   ```shell
-  pyinstaller --onefile --icon=app.ico --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_providers_shared.dll;.\onnxruntime\capi" .\vk-music-import.py
+  pyinstaller --onefile --icon=app.ico --hidden-import=tkinter --hidden-import=tkinter.filedialog --hidden-import=tkinter.font --hidden-import=darkdetect --hidden-import=ctypes.wintypes --hidden-import=tkinter.ttk --add-binary="venv\Lib\site-packages\onnxruntime\capi\onnxruntime_providers_shared.dll;.\onnxruntime\capi" --add-binary="venv\Lib\site-packages\darkdetect;darkdetect/" --add-binary="venv\Lib\site-packages\customtkinter;customtkinter/" .\vk-music-import.py
   ```
 - Скопируйте в папку `dist` файл с моделями капчи (`models`) и файл конфигурации (`config.env`):
   ```shell
