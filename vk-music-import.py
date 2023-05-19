@@ -16,16 +16,24 @@ import webbrowser
 from datetime import datetime
 from io import BytesIO
 from time import sleep
+from tkinter import Label, StringVar
+
 import requests
 import vk_api
-from PIL import Image
 import numpy as np
 import onnxruntime as rt
 from dotenv import load_dotenv
 from vk_api import Captcha
+from typing import Union
+import customtkinter
+from PIL import Image, ImageTk
+from customtkinter import CTkButton, CTkEntry
 
 
 logging.basicConfig(level=logging.INFO)
+
+customtkinter.set_appearance_mode("System")  # Modes: system (default), light, dark
+customtkinter.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
 
 def fix_relative_path(relative_path: str) -> str:
@@ -55,18 +63,62 @@ def captcha_handler(captcha: Captcha):
     start_time = datetime.now()
     captcha_url = captcha.get_url()
     captcha_params = re.match(r"https://api\.vk\.com/captcha\.php\?sid=(\d+)&s=(\d+)", captcha_url)
+    captcha_params_parsed = {
+        "sid": int(captcha_params.group(1)),
+        "s": int(captcha_params.group(2))
+    }
     if captcha_params is not None and os.getenv("BYPASS_CAPTCHA", "0") == "1":
         logging.info("Появилась капча, пытаюсь автоматически её решить...")
-        key = solve_captcha(sid=int(captcha_params.group(1)), s=int(captcha_params.group(2)))
+        key = solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"])
     else:
-        key = input("\n\n[!] Чтобы продолжить, введи сюда капчу с картинки {0}:\n> ".format(captcha.get_url())).strip()
+        logging.info("Чтобы продолжить, введи капчу с картинки во всплывающем окне")
+        response = requests.get(f'https://api.vk.com/captcha.php?sid={0}&s={1}'.format(
+            captcha_params_parsed["sid"], captcha_params_parsed["s"]))
+        img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
+        key = get_user_solve(captcha_image=img)
+        if key is None:
+            logging.error("Капча не решена, завершаю работу...")
+            sys.exit(1)
     elapsed_time = datetime.now() - start_time
     logging.info(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
-    timeout_seconds = 20 - elapsed_time.seconds + random.randint(0, 3)
+    timeout_seconds = 20 + random.randint(0, 3)
     logging.info(f"Чтобы VK не ругался, жду {timeout_seconds} сек...")
     sleep(timeout_seconds)
     logging.info("Отправляю решение капчи...")
     return captcha.try_again(key)
+
+
+def get_user_solve(captcha_image: Image) -> Union[str, None]:
+    """
+    Получает решение капчи от пользователя (GUI)
+    """
+    root = customtkinter.CTk()
+    root.title('Введи капчу с картинки')
+    root.geometry('293x100')
+    root.resizable(False, False)
+    root.iconbitmap('app.ico')
+    root.configure(background='white')
+
+    # Get image
+    image = ImageTk.PhotoImage(captcha_image)
+    image_label = Label(root, image=image)
+    image_label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
+
+    # Get user solve
+    captcha_solve = StringVar()
+    captcha_solve_entry = CTkEntry(root, textvariable=captcha_solve)
+    captcha_solve_entry.grid(row=1, column=0, padx=3, pady=3)
+
+    # Get user solve button
+    def get_user_solve_button():
+        captcha_solve.set(captcha_solve_entry.get())
+        root.destroy()
+
+    captcha_solve_entry.bind('<Return>', lambda event: get_user_solve_button.invoke())
+    get_user_solve_button = CTkButton(root, text='Отправить решение', command=get_user_solve_button)
+    get_user_solve_button.grid(row=1, column=1, padx=3, pady=3)
+    root.mainloop()
+    return captcha_solve.get() if captcha_solve.get() else None
 
 
 def solve_captcha(sid, s):
