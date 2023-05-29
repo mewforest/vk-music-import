@@ -5,6 +5,7 @@ AUTH:
 https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 
 """
+import csv
 import json
 import logging
 import os
@@ -232,6 +233,18 @@ def main():
             title_playlist = playlist_info["name"]
             playlist_img = playlist_info["image"]
             logging.info(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
+    elif os.getenv("APPLE_MODE", "0") == "1":
+        try:
+            with open(sys.argv[1], newline='', encoding='utf-8') as csvfile:
+                reader = csv.DictReader(csvfile, dialect='excel-tab')
+                tracks = open('tracklist.txt', 'w', encoding="utf-8")
+                for row in reader:
+                    tracks.write(row['Артист'] + ' - ' + row['Название'] + '\n')
+                tracks.close()
+        except FileNotFoundError:
+            logging.warning("Не найден плейлист. Нужно указать корректный путь до файла <имя плейлиста>.txt")
+            return
+
     # Open tracklist
     logging.info("Загружаю треклист...")
     try:
