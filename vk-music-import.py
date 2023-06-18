@@ -18,7 +18,7 @@ from datetime import datetime
 from io import BytesIO
 from time import sleep
 from tkinter import Label, StringVar
-
+from urllib.parse import urlparse, parse_qs
 import requests
 import vk_api
 import numpy as np
@@ -63,12 +63,15 @@ def captcha_handler(captcha: Captcha):
     """
     start_time = datetime.now()
     captcha_url = captcha.get_url()
-    captcha_params = re.match(r"https://api\.vk\.com/captcha\.php\?sid=(\d+)&s=(\d+)", captcha_url)
+    parsed_url = urlparse(captcha_url)
+    parsed_url_params = parse_qs(parsed_url.query)
+    captcha_sid = parsed_url_params["sid"][0]
+    captcha_s = parsed_url_params["s"][0]
     captcha_params_parsed = {
-        "sid": int(captcha_params.group(1)),
-        "s": int(captcha_params.group(2))
+        "sid": int(captcha_sid),
+        "s": int(captcha_s)
     }
-    if captcha_params is not None and os.getenv("BYPASS_CAPTCHA", "0") == "1":
+    if os.getenv("BYPASS_CAPTCHA", "0") == "1":
         logging.info("Появилась капча, пытаюсь автоматически её решить...")
         key = solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"])
     else:
