@@ -160,8 +160,9 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=audio,offline&redir
     else:
         text_welcome = """
 [!] Необходимо авторизоваться во ВКонтакте:
+
 1) Перейди по ссылке ниже и нажми "Разрешить":
-https://bit.ly/vk-music-import
+https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=audio,offline&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 2) Скопируй ссылку из адресной строки браузера и вставь её сюда:
 > """.lstrip()
     token_match = None
