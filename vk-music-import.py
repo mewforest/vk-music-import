@@ -208,6 +208,7 @@ def main():
     logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
     sleep(0.1)
     # Getting Spotify playlist
+    use_audio_links = False
     if os.getenv("SPOTIFY_MODE", "0") == "1":
         while True:
             spotify_playlist_url = input('\n[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
@@ -248,6 +249,8 @@ def main():
         except FileNotFoundError:
             logging.warning("Не найден плейлист. Нужно указать корректный путь до файла <имя плейлиста>.txt")
             return
+    elif os.getenv("VK_LINKS_MODE", "0") == "1":
+        use_audio_links = True
 
     # Open tracklist
     logging.info("Загружаю треклист...")
@@ -257,20 +260,26 @@ def main():
     except FileNotFoundError:
         logging.warning("Не найден треклист (tracklist.txt). Вы не забыли его предварительно создать?")
         return
-    for text_line in text_lines:
-        parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
-        if parsed_row is not None:
-            tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
-            continue
-        parsed_row = re.match(r"^(\S+)\s(.+)", text_line)
-        if parsed_row is not None:
-            track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
-            tracklist.append(track_info)
-            logging.warning(f"В строчке треклиста нет дефиса, разделил вручную: {track_info[0]} - {track_info[1]}")
+    if use_audio_links:
+        for text_line in text_lines:
+            parsed_row = re.match(r"^https://vk\.com/audio(\d+)_(\d+)(?:_([a-z0-9]+))?", text_line)
+            if parsed_row is not None and len(parsed_row.groups()) == 3:
+                tracklist.append(parsed_row.groups())
+    else:
+        for text_line in text_lines:
+            parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
+            if parsed_row is not None:
+                tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
+                continue
+            parsed_row = re.match(r"^(\S+)\s(.+)", text_line)
+            if parsed_row is not None:
+                track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
+                tracklist.append(track_info)
+                logging.warning(f"В строчке треклиста нет дефиса, разделил вручную: {track_info[0]} - {track_info[1]}")
     # Search and add tracks
     if os.getenv("REVERSE") == "1":
         tracklist.reverse()
-    logging.info(f"Буду искать {len(tracklist)} из {len(text_lines)} треков...")
+    logging.info(f"Буду {'добавлять' if use_audio_links else 'искать'} {len(tracklist)} из {len(text_lines)} треков...")
     ok_tracks = []
     failed_tracks = []
     questionable_tracks = []
@@ -291,46 +300,59 @@ def main():
             raise PermissionError(
                 f"VK не позволяет создать плейлист, повторите позже. Доп. информация: {playlist_response}")
         for i, track_row in enumerate(chunk_row, 1):
-            artist, title = track_row
-            logging.info(f"Ищу трек \"{title}\" от исполнителя {artist} ({i} из {len(tracklist)})...")
-            try:
-                response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
-            except vk_api.VkApiError as e:
-                logging.warning(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
-                sleep(10)
-                response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
-            if 'items' not in response:
-                raise PermissionError(
-                    f"VK временно заблокировал доступ к API, повторите позже. Доп. информация: {response}")
-            if len(response['items']) == 0:
-                failed_tracks.append(track_row)
-                logging.warning(f"Трек не найден в VK Музыке (исполнитель: {artist}, трек: {title})")
-                continue
-            full_matched = None
-            for item in response['items']:
-                if item['artist'].lower() == artist.lower() and title.lower() == item['title'].lower():
-                    full_matched = item
-                    break
-            if full_matched is not None:
-                ok_tracks.append(track_row)
-                track_info = full_matched
-                logging.info(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
-            elif os.getenv("STRICT_SEARCH") == "1":
-                failed_tracks.append(track_row)
-                logging.warning(f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
-                continue
+            if not use_audio_links:
+                artist, title = track_row
+                logging.info(f"Ищу трек \"{title}\" от исполнителя {artist} ({i} из {len(tracklist)})...")
+                try:
+                    response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+                except vk_api.VkApiError as e:
+                    logging.warning(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
+                    sleep(10)
+                    response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+                if 'items' not in response:
+                    raise PermissionError(
+                        f"VK временно заблокировал доступ к API, повторите позже. Доп. информация: {response}")
+                if len(response['items']) == 0:
+                    failed_tracks.append(track_row)
+                    logging.warning(f"Трек не найден в VK Музыке (исполнитель: {artist}, трек: {title})")
+                    continue
+                full_matched = None
+                for item in response['items']:
+                    if item['artist'].lower() == artist.lower() and title.lower() == item['title'].lower():
+                        full_matched = item
+                        break
+                if full_matched is not None:
+                    ok_tracks.append(track_row)
+                    track_info = full_matched
+                    logging.info(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
+                elif os.getenv("STRICT_SEARCH") == "1":
+                    failed_tracks.append(track_row)
+                    logging.warning(f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
+                    continue
+                else:
+                    partially_matched = response['items'][0]
+                    track_info = partially_matched
+                    questionable_tracks.append(track_row + (partially_matched['artist'], partially_matched['title'],))
+                    logging.info(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
+                                 f"{partially_matched['title']}\"")
+                logging.info(f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
             else:
-                partially_matched = response['items'][0]
-                track_info = partially_matched
-                questionable_tracks.append(track_row + (partially_matched['artist'], partially_matched['title'],))
-                logging.info(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
-                             f"{partially_matched['title']}\"")
-            logging.info(f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
+                owner_id, track_id, access_key = track_row
+                track_info = {
+                    'owner_id': owner_id,
+                    'id': track_id,
+                    'access_key': access_key,
+                    'title': '',
+                    'artist': '',
+                }
+            audio_ids = f"{track_info['owner_id']}_{track_info['id']}"
+            if use_audio_links and track_info['access_key'] is not None:
+                audio_ids += f"_{track_info['access_key']}"
             try:
                 add_to_playlist_response = vk_session.method("audio.addToPlaylist", {
                     "owner_id": user_info['id'],
                     "playlist_id": playlist_response['id'],
-                    "audio_ids": f"{track_info['owner_id']}_{track_info['id']}",
+                    "audio_ids": audio_ids,
                 })
             except vk_api.VkApiError as e:
                 logging.warning(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд...")
@@ -353,16 +375,22 @@ def main():
             if os.getenv("ADD_TO_LIBRARY") == "1":
                 logging.info(
                     f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в мои аудиозаписи...")
-                try:
-                    vk_session.method("audio.add", {
+                add_params = {
                         'audio_id': track_info['id'],
                         'owner_id': track_info['owner_id']
-                    })
+                    }
+                if use_audio_links and track_info['access_key'] is not None:
+                    add_params['access_key'] = track_info['access_key']
+                try:
+                    vk_session.method("audio.add", add_params)
                 except vk_api.VkApiError as e:
                     logging.warning(f"Не получается добавить трек в мои аудиозаписи, ошибка: \"{e}\". Пропускаю трек...")
                 else:
                     logging.info(f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
-            logging.info(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
+            if use_audio_links:
+                logging.info(f"Успешно добавил в плейлист: \"id: {track_info['id']}\"")
+            else:
+                logging.info(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
             added_count += 1
 
     if len(tracklist) != added_count:
@@ -389,7 +417,7 @@ def main():
 Найдено треков с точными совпадениями: {len(ok_tracks)}
 Найдено треков с примерными совпадениями: {len(questionable_tracks)}
 Не найдено треков: {len(failed_tracks)}
-
+{f'Добавлено треков по прямым ссылкам: {len(tracklist)}' if use_audio_links else ''}
 
 ССЫЛКИ:
 
