@@ -17,7 +17,7 @@ import webbrowser
 from datetime import datetime
 from io import BytesIO
 from time import sleep
-from tkinter import Label, StringVar
+from tkinter import Label, StringVar, Entry, Button, Tk
 from urllib.parse import urlparse, parse_qs
 import requests
 import vk_api
@@ -26,15 +26,10 @@ import onnxruntime as rt
 from dotenv import load_dotenv
 from vk_api import Captcha
 from typing import Union
-import customtkinter
 from PIL import Image, ImageTk
-from customtkinter import CTkButton, CTkEntry
 
 
 logging.basicConfig(level=logging.INFO)
-
-customtkinter.set_appearance_mode("System")  # Modes: system (default), light, dark
-customtkinter.set_default_color_theme("blue")  # Themes: blue (default), dark-blue, green
 
 
 def fix_relative_path(relative_path: str) -> str:
@@ -79,28 +74,27 @@ def captcha_handler(captcha: Captcha):
         response = requests.get(f'https://api.vk.com/captcha.php?sid={0}&s={1}'.format(
             captcha_params_parsed["sid"], captcha_params_parsed["s"]))
         img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
-        key = get_user_solve(captcha_image=img)
+        key = get_user_solve(captcha_image=img, captcha_params_parsed=captcha_params_parsed)
         if key is None:
             logging.error("Капча не решена, завершаю работу...")
             sys.exit(1)
     elapsed_time = datetime.now() - start_time
     logging.info(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
-    timeout_seconds = 20 + random.randint(0, 3)
+    timeout_seconds = 10 + random.randint(0, 3)
     logging.info(f"Чтобы VK не ругался, жду {timeout_seconds} сек...")
     sleep(timeout_seconds)
     logging.info("Отправляю решение капчи...")
     return captcha.try_again(key)
 
 
-def get_user_solve(captcha_image: Image) -> Union[str, None]:
+def get_user_solve(captcha_image: Image, captcha_params_parsed: dict[str, int]) -> Union[str, None]:
     """
     Получает решение капчи от пользователя (GUI)
     """
-    root = customtkinter.CTk()
+    root = Tk()
     root.title('Введи капчу с картинки')
-    root.geometry('293x100')
+    root.geometry('285x125')
     root.resizable(False, False)
-    root.iconbitmap('app.ico')
     root.configure(background='white')
 
     # Get image
@@ -110,8 +104,14 @@ def get_user_solve(captcha_image: Image) -> Union[str, None]:
 
     # Get user solve
     captcha_solve = StringVar()
-    captcha_solve_entry = CTkEntry(root, textvariable=captcha_solve)
+    captcha_solve_entry = Entry(root, textvariable=captcha_solve)
     captcha_solve_entry.grid(row=1, column=0, padx=3, pady=3)
+
+    # Setting what we detected
+    captcha_solve.set(solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"], img=captcha_image))
+    # Select all text in entry
+    captcha_solve_entry.select_range(0, 'end')
+    captcha_solve_entry.focus_set()
 
     # Get user solve button
     def get_user_solve_button():
@@ -119,18 +119,19 @@ def get_user_solve(captcha_image: Image) -> Union[str, None]:
         root.destroy()
 
     captcha_solve_entry.bind('<Return>', lambda event: get_user_solve_button.invoke())
-    get_user_solve_button = CTkButton(root, text='Отправить решение', command=get_user_solve_button)
+    get_user_solve_button = Button(root, text='Отправить решение', command=get_user_solve_button)
     get_user_solve_button.grid(row=1, column=1, padx=3, pady=3)
     root.mainloop()
     return captcha_solve.get() if captcha_solve.get() else None
 
 
-def solve_captcha(sid, s):
+def solve_captcha(sid, s, img=None):
     """
     Обработчик капчи с помощью машинного зрения
     """
-    response = requests.get(f'https://api.vk.com/captcha.php?sid={sid}&s={s}')
-    img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
+    if img is None:
+        response = requests.get(f'https://api.vk.com/captcha.php?sid={sid}&s={s}')
+        img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
     x = np.array(img).reshape(1, -1)
     x = np.expand_dims(x, axis=0)
     x = x / np.float32(255.)
