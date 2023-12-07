@@ -29,9 +29,6 @@ from typing import Union
 from PIL import Image, ImageTk
 
 
-logging.basicConfig(level=logging.INFO)
-
-
 def fix_relative_path(relative_path: str) -> str:
     """
     Фикс относительных путей PyInstaller
@@ -42,6 +39,22 @@ def fix_relative_path(relative_path: str) -> str:
     elif __file__:
         application_path = os.path.dirname(os.path.abspath(__file__))
     return os.path.abspath(os.path.join(application_path, relative_path))
+
+
+logging.basicConfig(level=logging.INFO)
+load_dotenv(fix_relative_path('config.env'))
+
+BYPASS_CAPTCHA = os.getenv("BYPASS_CAPTCHA", "0") == "1"
+VK_TOKEN = os.getenv("VK_TOKEN")
+SPOTIFY_MODE = os.getenv("SPOTIFY_MODE", "0") == "1"
+APPLE_MODE = os.getenv("APPLE_MODE", "0") == "1"
+VK_LINKS_MODE = os.getenv("VK_LINKS_MODE", "0") == "1"
+REVERSE = os.getenv("REVERSE", "0") == "1"
+STRICT_SEARCH = os.getenv("STRICT_SEARCH", "0") == "1"
+ADD_TO_LIBRARY = os.getenv("ADD_TO_LIBRARY", "0") == "1"
+TIMEOUT_AFTER_ERROR = int(os.getenv("TIMEOUT_AFTER_ERROR", "10"))
+TIMEOUT_AFTER_CAPTCHA = int(os.getenv("TIMEOUT_AFTER_CAPTCHA", "10"))
+TIMEOUT_AFTER_SUCCESS = int(os.getenv("TIMEOUT_AFTER_SUCCESS", "10"))
 
 
 def chunks(lst, n):
@@ -66,7 +79,7 @@ def captcha_handler(captcha: Captcha):
         "sid": int(captcha_sid),
         "s": int(captcha_s)
     }
-    if os.getenv("BYPASS_CAPTCHA", "0") == "1":
+    if BYPASS_CAPTCHA:
         logging.info("Появилась капча, пытаюсь автоматически её решить...")
         key = solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"])
     else:
@@ -80,9 +93,8 @@ def captcha_handler(captcha: Captcha):
             sys.exit(1)
     elapsed_time = datetime.now() - start_time
     logging.info(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
-    timeout_seconds = 10 + random.randint(0, 3)
-    logging.info(f"Чтобы VK не ругался, жду {timeout_seconds} сек...")
-    sleep(timeout_seconds)
+    logging.info(f"Чтобы VK не ругался, жду {TIMEOUT_AFTER_CAPTCHA} сек...")
+    sleep(TIMEOUT_AFTER_CAPTCHA)
     logging.info("Отправляю решение капчи...")
     return captcha.try_again(key)
 
@@ -190,10 +202,10 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=audio,offline&redir
 def main():
     # VK Authentication
     logging.info("Авторизуюсь в ВКонтакте...")
-    if os.getenv("VK_TOKEN") == "":
+    if VK_TOKEN == "":
         logging.warning("Не обнаружен токен VK API в config.env файле, запрашиваю авторизацию вручную...")
         get_token()
-    vk_session = vk_api.VkApi(token=os.getenv("VK_TOKEN"), captcha_handler=captcha_handler)
+    vk_session = vk_api.VkApi(token=VK_TOKEN, captcha_handler=captcha_handler)
     vk = vk_session.get_api()
     tracklist = []
     try:
@@ -207,10 +219,10 @@ def main():
     report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
     playlist_img = None
     logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
-    sleep(0.1)
+
     # Getting Spotify playlist
     use_audio_links = False
-    if os.getenv("SPOTIFY_MODE", "0") == "1":
+    if SPOTIFY_MODE:
         while True:
             spotify_playlist_url = input('\n[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
             tracklist_response = requests.post('https://spotya.ru/data.php', json={
@@ -239,7 +251,7 @@ def main():
             title_playlist = playlist_info["name"]
             playlist_img = playlist_info["image"]
             logging.info(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
-    elif os.getenv("APPLE_MODE", "0") == "1":
+    elif APPLE_MODE:
         try:
             with open(sys.argv[1], newline='', encoding='utf-8') as csvfile:
                 reader = csv.DictReader(csvfile, dialect='excel-tab')
@@ -250,7 +262,7 @@ def main():
         except FileNotFoundError:
             logging.warning("Не найден плейлист. Нужно указать корректный путь до файла <имя плейлиста>.txt")
             return
-    elif os.getenv("VK_LINKS_MODE", "0") == "1":
+    elif VK_LINKS_MODE:
         use_audio_links = True
 
     # Open tracklist
@@ -277,8 +289,9 @@ def main():
                 track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
                 tracklist.append(track_info)
                 logging.warning(f"В строчке треклиста нет дефиса, разделил вручную: {track_info[0]} - {track_info[1]}")
+
     # Search and add tracks
-    if os.getenv("REVERSE") == "1":
+    if REVERSE:
         tracklist.reverse()
     logging.info(f"Буду {'добавлять' if use_audio_links else 'искать'} {len(tracklist)} из {len(text_lines)} треков...")
     ok_tracks = []
@@ -308,7 +321,7 @@ def main():
                     response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
                 except vk_api.VkApiError as e:
                     logging.warning(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
-                    sleep(10)
+                    sleep(TIMEOUT_AFTER_ERROR)
                     response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
                 if 'items' not in response:
                     raise PermissionError(
@@ -326,9 +339,10 @@ def main():
                     ok_tracks.append(track_row)
                     track_info = full_matched
                     logging.info(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
-                elif os.getenv("STRICT_SEARCH") == "1":
+                elif STRICT_SEARCH:
                     failed_tracks.append(track_row)
-                    logging.warning(f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
+                    logging.warning(
+                        f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
                     continue
                 else:
                     partially_matched = response['items'][0]
@@ -336,7 +350,8 @@ def main():
                     questionable_tracks.append(track_row + (partially_matched['artist'], partially_matched['title'],))
                     logging.info(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
                                  f"{partially_matched['title']}\"")
-                logging.info(f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
+                logging.info(
+                    f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
             else:
                 owner_id, track_id, access_key = track_row
                 track_info = {
@@ -357,7 +372,7 @@ def main():
                 })
             except vk_api.VkApiError as e:
                 logging.warning(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд...")
-                sleep(10)
+                sleep(TIMEOUT_AFTER_ERROR)
                 delayed_response = None
                 try:
                     delayed_response = vk_session.method("audio.addToPlaylist", {
@@ -373,26 +388,29 @@ def main():
                     logging.warning(f"Ошибка добавления в плейлист: возвращен пустой ответ, возможно, "
                                     f"у вас нет прав на добавление трека (id: {track_info['id']})")
                     continue
-            if os.getenv("ADD_TO_LIBRARY") == "1":
+            if ADD_TO_LIBRARY:
                 logging.info(
                     f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в мои аудиозаписи...")
                 add_params = {
-                        'audio_id': track_info['id'],
-                        'owner_id': track_info['owner_id']
-                    }
+                    'audio_id': track_info['id'],
+                    'owner_id': track_info['owner_id']
+                }
                 if use_audio_links and track_info['access_key'] is not None:
                     add_params['access_key'] = track_info['access_key']
                 try:
                     vk_session.method("audio.add", add_params)
                 except vk_api.VkApiError as e:
-                    logging.warning(f"Не получается добавить трек в мои аудиозаписи, ошибка: \"{e}\". Пропускаю трек...")
+                    logging.warning(
+                        f"Не получается добавить трек в мои аудиозаписи, ошибка: \"{e}\". Пропускаю трек...")
                 else:
-                    logging.info(f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
+                    logging.info(
+                        f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
             if use_audio_links:
                 logging.info(f"Успешно добавил в плейлист: \"id: {track_info['id']}\"")
             else:
                 logging.info(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
             added_count += 1
+            sleep(TIMEOUT_AFTER_SUCCESS)
 
     if len(tracklist) != added_count:
         logging.warning(f"Выполнено, но в плейлист добавилось не всё: {added_count} из {len(tracklist)}")
@@ -459,11 +477,9 @@ def main():
 
 
 if __name__ == "__main__":
-    load_dotenv(fix_relative_path('config.env'))
     try:
         main()
     except Exception as e:
         logging.exception(e)
     finally:
         input("Нажмите Enter, чтобы завершить работу программы...")
-
