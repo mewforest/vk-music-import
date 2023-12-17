@@ -78,7 +78,7 @@ class MainWindow(QWidget):
         super().__init__()
         # Setting the window title and size
         self.setWindowTitle("VK Music import (beta)")
-        self.resize(400, 300)
+        self.resize(600, 300)
         # Creating a tab widget
         self.tab_widget = QTabWidget()
         # Creating two tabs
@@ -127,6 +127,10 @@ class MainTab(QWidget, MainEnv):
         self.setLayout(self.layout)
         # Main
         self.is_running = False
+        self.is_under_ban = False
+        self.ok_tracks = None
+        self.questionable_tracks = None
+        self.playlist_response = None
 
     def update_progress_bar(self, value: int):
         """
@@ -152,7 +156,7 @@ class MainTab(QWidget, MainEnv):
         else:
             return None
 
-    # Defining a function that starts the import process (call main() function with the progress bar and text edit - instead of print() use text_edit.append())
+    # Defining a function that starts the import process
     def start(self):
         self.load_env_config()
         if self.is_running:
@@ -162,7 +166,7 @@ class MainTab(QWidget, MainEnv):
             if reply == QMessageBox.Yes:
                 self.is_running = False
                 self.start_button.setText("Начать импорт")
-                self.add_log("Остановлено пользователем")
+                self.add_log("Останавливается пользователем...")
 
             return
 
@@ -195,7 +199,8 @@ class MainTab(QWidget, MainEnv):
         use_audio_links = False
         if self.env.SPOTIFY_MODE:
             while True:
-                spotify_playlist_url = self.show_input_dialog('Ссылка на Spotify', 'Вставь сюда ссылку на плейлист в Spotify').strip()
+                spotify_playlist_url = self.show_input_dialog('Ссылка на Spotify',
+                                                              'Вставь сюда ссылку на плейлист в Spotify').strip()
                 # Use better input dialog in pyside2 (QInputDialog)
                 tracklist_response = requests.post('https://spotya.ru/data.php', json={
                     "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
@@ -268,9 +273,34 @@ class MainTab(QWidget, MainEnv):
             tracklist.reverse()
         self.add_log(
             f"Буду {'добавлять' if use_audio_links else 'искать'} {len(tracklist)} из {len(text_lines)} треков...")
-        ok_tracks = []
+
+        is_continue = False
+        if os.path.exists(fix_relative_path("progress.json")):
+            # Ask user to continue from last progress
+            reply = QMessageBox.question(self, 'Подтверждение',
+                                         'Найден файл с прошлого незаконченного переноса, продолжить с него?\n'
+                                         'Важно: треклист должен быть тот же самый, иначе возможны ошибки.',
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                with open(fix_relative_path("progress.json"), "r", encoding="utf-8") as f:
+                    progress = json.load(f)
+                self.ok_tracks = progress['ok_tracks']
+                self.questionable_tracks = progress['questionable_tracks']
+                self.playlist_response = progress['playlist_response']
+                is_continue = True
+                self.add_log(f"Продолжаю с {len(self.ok_tracks) + len(self.questionable_tracks)} трека...")
+
+                # Удаляем треки из tracklist, которые уже добавлены
+                for track in self.ok_tracks + self.questionable_tracks:
+                    if (track[0], track[1]) in tracklist:
+                        tracklist.remove((track[0], track[1]))
+            else:
+                os.remove(fix_relative_path("progress.json"))
+                self.add_log("Начинаю сначала...")
+
+        self.ok_tracks = []
+        self.questionable_tracks = []
         failed_tracks = []
-        questionable_tracks = []
         added_count = 0
         chucked_rows = list(chunks(tracklist, 1000))
         playlists = []
@@ -278,15 +308,17 @@ class MainTab(QWidget, MainEnv):
             self.add_log("Создаем плейлист для добавления музыки...")
             if len(chucked_rows) > 1:
                 title_playlist = f'[{k}/{len(chucked_rows)}] {title_playlist}'
-            playlist_response = vk_session.method("audio.createPlaylist", {
-                "owner_id": user_info['id'],
-                "title": title_playlist
-            })
+            if not is_continue:
+                self.playlist_response = vk_session.method("audio.createPlaylist", {
+                    "owner_id": user_info['id'],
+                    "title": title_playlist
+                })
+            is_continue = False
             playlists.append(f"https://vk.com/audios{user_info['id']}?"
-                             f"section=all&z=audio_playlist{user_info['id']}_{playlist_response['id']}")
-            if 'id' not in playlist_response:
+                             f"section=all&z=audio_playlist{user_info['id']}_{self.playlist_response['id']}")
+            if 'id' not in self.playlist_response:
                 raise PermissionError(
-                    f"VK не позволяет создать плейлист, повторите позже. Доп. информация: {playlist_response}")
+                    f"VK не позволяет создать плейлист, повторите позже. Доп. информация: {self.playlist_response}")
             for i, track_row in enumerate(chunk_row, 1):
                 if not use_audio_links:
                     artist, title = track_row
@@ -313,7 +345,7 @@ class MainTab(QWidget, MainEnv):
                             full_matched = item
                             break
                     if full_matched is not None:
-                        ok_tracks.append(track_row)
+                        self.ok_tracks.append(track_row)
                         track_info = full_matched
                         self.add_log(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
                     elif self.env.STRICT_SEARCH:
@@ -324,7 +356,7 @@ class MainTab(QWidget, MainEnv):
                     else:
                         partially_matched = response['items'][0]
                         track_info = partially_matched
-                        questionable_tracks.append(
+                        self.questionable_tracks.append(
                             track_row + (partially_matched['artist'], partially_matched['title'],))
                         self.add_log(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
                                      f"{partially_matched['title']}\"")
@@ -345,7 +377,7 @@ class MainTab(QWidget, MainEnv):
                 try:
                     add_to_playlist_response = vk_session.method("audio.addToPlaylist", {
                         "owner_id": user_info['id'],
-                        "playlist_id": playlist_response['id'],
+                        "playlist_id": self.playlist_response['id'],
                         "audio_ids": audio_ids,
                     })
                 except vk_api.VkApiError as e:
@@ -355,7 +387,7 @@ class MainTab(QWidget, MainEnv):
                     try:
                         delayed_response = vk_session.method("audio.addToPlaylist", {
                             "owner_id": user_info['id'],
-                            "playlist_id": playlist_response['id'],
+                            "playlist_id": self.playlist_response['id'],
                             "audio_ids": track_info['id'],
                         })
                     except vk_api.VkApiError as e:
@@ -390,20 +422,22 @@ class MainTab(QWidget, MainEnv):
                     self.add_log(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
                 added_count += 1
                 sleep(self.env.TIMEOUT_AFTER_SUCCESS)
+                self.is_under_ban = False
 
         if len(tracklist) != added_count:
             self.add_log(f"Выполнено, но в плейлист добавилось не всё: {added_count} из {len(tracklist)}")
         else:
             self.add_log(f"Выполнено успешно! Все найденные треки добавлены")
 
-        self.add_log(f"Найдено треков с точными совпадениями: {len(ok_tracks)}")
-        self.add_log(f"Найдено треков с примерными совпадениями: {len(questionable_tracks)}")
+        self.add_log(f"Найдено треков с точными совпадениями: {len(self.ok_tracks)}")
+        self.add_log(f"Найдено треков с примерными совпадениями: {len(self.questionable_tracks)}")
         self.add_log(f"Не найдено треков: {len(failed_tracks)}")
 
         self.add_log(f"Всего перенесено треков: {added_count} из {len(text_lines)}")
         with open(fix_relative_path(report_filename), 'w', encoding='utf-8') as f:
-            questionable_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"' for t in questionable_tracks)
-            ok_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in ok_tracks)
+            questionable_tracks_str = '\n'.join(
+                f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"' for t in self.questionable_tracks)
+            ok_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in self.ok_tracks)
             failed_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in failed_tracks)
             playlists_str = '\n'.join(f'- {p}' for p in playlists)
             f.write(f"""
@@ -412,8 +446,8 @@ class MainTab(QWidget, MainEnv):
 Дата/время: {datetime.now().strftime('%d.%m.%Y %H:%M')}.
 Название плейлиста (если доступно): {title_playlist or '-'}
 Изображение плейлиста (если доступно): {playlist_img or '-'}
-Найдено треков с точными совпадениями: {len(ok_tracks)}
-Найдено треков с примерными совпадениями: {len(questionable_tracks)}
+Найдено треков с точными совпадениями: {len(self.ok_tracks)}
+Найдено треков с примерными совпадениями: {len(self.questionable_tracks)}
 Не найдено треков: {len(failed_tracks)}
 {f'Добавлено треков по прямым ссылкам: {len(tracklist)}' if use_audio_links else ''}
 
@@ -445,6 +479,13 @@ class MainTab(QWidget, MainEnv):
             """.strip())
 
         self.add_log(f"Файл отчета сгенерирован в текущей папке (\"{report_filename}\")")
+
+        # Set gui to Start again
+        self.is_running = False
+        self.start_button.setText("Начать импорт")
+
+        if os.path.exists(fix_relative_path("progress.json")):
+            os.remove(fix_relative_path("progress.json"))
         if len(playlists) == 1:
             self.add_log(f"Скрипт выполнен! Твой плейлист готов: {playlists[0]}")
         else:
@@ -454,10 +495,42 @@ class MainTab(QWidget, MainEnv):
         if platform.system() == "Windows":
             webbrowser.open(fix_relative_path(report_filename))
 
+    def save_progress_to_file(self):
+        """
+        Сохраняет прогресс в JSON файл (self.ok_tracks, self.questionable_tracks, self.playlist_response)
+        """
+        with open(fix_relative_path("progress.json"), "w", encoding="utf-8") as f:
+            json.dump({
+                "ok_tracks": self.ok_tracks,
+                "questionable_tracks": self.questionable_tracks,
+                "playlist_response": self.playlist_response,
+            }, f, indent=4)
+
     def captcha_handler(self, captcha: Captcha):
         """
         Хендлер для обработки капчи из VK
         """
+        if self.is_under_ban:
+            # If captcha showed up before, show dialog yes/no to pause current progress and exit
+            reply = QMessageBox.question(self, 'Сделаем паузу?',
+                                         'Кажется, VK снова запросил капчу, это значит, что vk временно блокирует возможность импорта музыки.\n'
+                                         'Возможно, стоит сделать перерыв в запросах и продолжить позже?\n'
+                                         'Если вы нажмете "Да", то скрипт остановится, но вы сможете продолжить импорт позже.\n'
+                                         'Если вы нажмете "Нет", то скрипт продолжит работу, но возможно, что vk так и не захочет импортировать.\n',
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.save_progress_to_file()
+                self.is_running = False
+                self.start_button.setText("Начать импорт")
+                self.add_log("Останавливается пользователем...")
+                return captcha.try_again('123')
+                return None
+            else:
+                self.add_log("Продолжаю работу, но vk может не захотеть импортировать...")
+                self.is_under_ban = False
+
+
+        self.is_under_ban = True
         start_time = datetime.now()
         captcha_url = captcha.get_url()
         parsed_url = urlparse(captcha_url)
@@ -482,9 +555,9 @@ class MainTab(QWidget, MainEnv):
                 sys.exit(1)
         elapsed_time = datetime.now() - start_time
         self.add_log(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
-        self.add_log(f"Чтобы VK не ругался, жду {self.env.TIMEOUT_AFTER_CAPTCHA} сек...")
-        self.add_log(f"(Программа может подвиснуть на {self.env.TIMEOUT_AFTER_CAPTCHA} секунд)")
-        sleep(self.env.TIMEOUT_AFTER_CAPTCHA)
+        # self.add_log(f"Чтобы VK не ругался, жду {self.env.TIMEOUT_AFTER_CAPTCHA} сек...")
+        # self.add_log(f"(Программа может подвиснуть на {self.env.TIMEOUT_AFTER_CAPTCHA} секунд)")
+        # sleep(self.env.TIMEOUT_AFTER_CAPTCHA)
         self.add_log("Отправляю решение капчи...")
         return captcha.try_again(key)
 
