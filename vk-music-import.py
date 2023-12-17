@@ -10,23 +10,30 @@ import json
 import logging
 import os
 import platform
-import random
 import re
 import sys
 import webbrowser
 from datetime import datetime
 from io import BytesIO
 from time import sleep
-from tkinter import Label, StringVar, Entry, Button, Tk
+from types import SimpleNamespace
 from urllib.parse import urlparse, parse_qs
 import requests
 import vk_api
 import numpy as np
 import onnxruntime as rt
-from dotenv import load_dotenv
+from PySide2.QtGui import QPixmap, QClipboard, QDesktopServices
+from dotenv import load_dotenv, set_key
 from vk_api import Captcha
 from typing import Union
 from PIL import Image, ImageTk
+import qdarktheme
+from PySide2.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QFormLayout, QCheckBox, QLineEdit, \
+    QProgressBar, QTextEdit, QPushButton, QDialog, QLabel, QHBoxLayout, QRadioButton, QMessageBox, QInputDialog
+from PySide2.QtCore import Qt, QUrl
+from PySide2.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
+from PySide2.QtGui import QPixmap, QImage
+from PySide2.QtCore import Qt
 
 
 def fix_relative_path(relative_path: str) -> str:
@@ -41,393 +48,365 @@ def fix_relative_path(relative_path: str) -> str:
     return os.path.abspath(os.path.join(application_path, relative_path))
 
 
-logging.basicConfig(level=logging.INFO)
-load_dotenv(fix_relative_path('config.env'))
+# Class for envs syncing (config.env)
+class MainEnv:
+    def __init__(self):
+        self.env = SimpleNamespace()
+        self.load_env_config()
 
-BYPASS_CAPTCHA = os.getenv("BYPASS_CAPTCHA", "0") == "1"
-VK_TOKEN = os.getenv("VK_TOKEN")
-SPOTIFY_MODE = os.getenv("SPOTIFY_MODE", "0") == "1"
-APPLE_MODE = os.getenv("APPLE_MODE", "0") == "1"
-VK_LINKS_MODE = os.getenv("VK_LINKS_MODE", "0") == "1"
-REVERSE = os.getenv("REVERSE", "0") == "1"
-STRICT_SEARCH = os.getenv("STRICT_SEARCH", "0") == "1"
-ADD_TO_LIBRARY = os.getenv("ADD_TO_LIBRARY", "0") == "1"
-TIMEOUT_AFTER_ERROR = int(os.getenv("TIMEOUT_AFTER_ERROR", "10"))
-TIMEOUT_AFTER_CAPTCHA = int(os.getenv("TIMEOUT_AFTER_CAPTCHA", "10"))
-TIMEOUT_AFTER_SUCCESS = int(os.getenv("TIMEOUT_AFTER_SUCCESS", "10"))
+    def load_env_config(self):
+        self.env = SimpleNamespace()
 
+        load_dotenv(fix_relative_path('config.env'))
 
-def chunks(lst, n):
-    """
-    Разделяет список на чанки
-    """
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
-
-
-def captcha_handler(captcha: Captcha):
-    """
-    Хендлер для обработки капчи из VK
-    """
-    start_time = datetime.now()
-    captcha_url = captcha.get_url()
-    parsed_url = urlparse(captcha_url)
-    parsed_url_params = parse_qs(parsed_url.query)
-    captcha_sid = parsed_url_params["sid"][0]
-    captcha_s = parsed_url_params["s"][0]
-    captcha_params_parsed = {
-        "sid": int(captcha_sid),
-        "s": int(captcha_s)
-    }
-    if BYPASS_CAPTCHA:
-        logging.info("Появилась капча, пытаюсь автоматически её решить...")
-        key = solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"])
-    else:
-        logging.info("Чтобы продолжить, введи капчу с картинки во всплывающем окне")
-        response = requests.get(f'https://api.vk.com/captcha.php?sid={0}&s={1}'.format(
-            captcha_params_parsed["sid"], captcha_params_parsed["s"]))
-        img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
-        key = get_user_solve(captcha_image=img, captcha_params_parsed=captcha_params_parsed)
-        if key is None:
-            logging.error("Капча не решена, завершаю работу...")
-            sys.exit(1)
-    elapsed_time = datetime.now() - start_time
-    logging.info(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
-    logging.info(f"Чтобы VK не ругался, жду {TIMEOUT_AFTER_CAPTCHA} сек...")
-    sleep(TIMEOUT_AFTER_CAPTCHA)
-    logging.info("Отправляю решение капчи...")
-    return captcha.try_again(key)
+        self.env.BYPASS_CAPTCHA = os.getenv("BYPASS_CAPTCHA", "0") == "1"
+        self.env.VK_TOKEN = os.getenv("VK_TOKEN")
+        self.env.SPOTIFY_MODE = os.getenv("SPOTIFY_MODE", "0") == "1"
+        self.env.APPLE_MODE = os.getenv("APPLE_MODE", "0") == "1"
+        self.env.VK_LINKS_MODE = os.getenv("VK_LINKS_MODE", "0") == "1"
+        self.env.REVERSE = os.getenv("REVERSE", "0") == "1"
+        self.env.STRICT_SEARCH = os.getenv("STRICT_SEARCH", "0") == "1"
+        self.env.ADD_TO_LIBRARY = os.getenv("ADD_TO_LIBRARY", "0") == "1"
+        self.env.TIMEOUT_AFTER_ERROR = int(os.getenv("TIMEOUT_AFTER_ERROR", "10"))
+        self.env.TIMEOUT_AFTER_CAPTCHA = int(os.getenv("TIMEOUT_AFTER_CAPTCHA", "10"))
+        self.env.TIMEOUT_AFTER_SUCCESS = int(os.getenv("TIMEOUT_AFTER_SUCCESS", "10"))
 
 
-def get_user_solve(captcha_image: Image, captcha_params_parsed: dict[str, int]) -> Union[str, None]:
-    """
-    Получает решение капчи от пользователя (GUI)
-    """
-    root = Tk()
-    root.title('Введи капчу с картинки')
-    root.geometry('285x125')
-    root.resizable(False, False)
-    root.configure(background='white')
-
-    # Get image
-    image = ImageTk.PhotoImage(captcha_image)
-    image_label = Label(root, image=image)
-    image_label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
-
-    # Get user solve
-    captcha_solve = StringVar()
-    captcha_solve_entry = Entry(root, textvariable=captcha_solve)
-    captcha_solve_entry.grid(row=1, column=0, padx=3, pady=3)
-
-    # Setting what we detected
-    captcha_solve.set(solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"], img=captcha_image))
-    # Select all text in entry
-    captcha_solve_entry.select_range(0, 'end')
-    captcha_solve_entry.focus_set()
-
-    # Get user solve button
-    def get_user_solve_button():
-        captcha_solve.set(captcha_solve_entry.get())
-        root.destroy()
-
-    captcha_solve_entry.bind('<Return>', lambda event: get_user_solve_button.invoke())
-    get_user_solve_button = Button(root, text='Отправить решение', command=get_user_solve_button)
-    get_user_solve_button.grid(row=1, column=1, padx=3, pady=3)
-    root.mainloop()
-    return captcha_solve.get() if captcha_solve.get() else None
+# Creating a class for the main window
+class MainWindow(QWidget):
+    def __init__(self):
+        super().__init__()
+        # Setting the window title and size
+        self.setWindowTitle("VK Music import (beta)")
+        self.resize(400, 300)
+        # Creating a tab widget
+        self.tab_widget = QTabWidget()
+        # Creating two tabs
+        self.main_tab = MainTab()
+        self.settings_tab = SettingsTab()
+        # Adding the tabs to the tab widget
+        self.tab_widget.addTab(self.main_tab, "Главная")
+        self.tab_widget.addTab(self.settings_tab, "Настройки")
+        # Creating a layout for the window
+        self.layout = QVBoxLayout()
+        # Adding the tab widget to the layout
+        self.layout.addWidget(self.tab_widget)
+        # Setting the layout for the window
+        self.setLayout(self.layout)
 
 
-def solve_captcha(sid, s, img=None):
-    """
-    Обработчик капчи с помощью машинного зрения
-    """
-    if img is None:
-        response = requests.get(f'https://api.vk.com/captcha.php?sid={sid}&s={s}')
-        img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
-    x = np.array(img).reshape(1, -1)
-    x = np.expand_dims(x, axis=0)
-    x = x / np.float32(255.)
-    session = rt.InferenceSession(fix_relative_path('models/captcha_model.onnx'))
-    session2 = rt.InferenceSession(fix_relative_path('models/ctc_model.onnx'))
-    out = session.run(None, dict([(inp.name, x[n]) for n, inp in enumerate(session.get_inputs())]))
-    out = session2.run(None, dict([(inp.name, np.float32(out[n])) for n, inp in enumerate(session2.get_inputs())]))
-    char_map = ' 24578acdehkmnpqsuvxyz'
-    captcha = ''.join([char_map[c] for c in np.uint8(out[-1][out[0] > 0])])
-    return captcha
+# Creating a class for the main tab
+class MainTab(QWidget, MainEnv):
+    def __init__(self):
+        # Call both parents constructors
+        QWidget.__init__(self)
+        MainEnv.__init__(self)
+        # Environment variables
+        self.env = SimpleNamespace()
+        # Creating buttons (start, pause, stop)
+        self.start_button = QPushButton("Начать импорт")
+        # Connecting the buttons to their functions
+        self.start_button.clicked.connect(self.start)
+        # Creating a progress bar
+        self.progress_bar = QProgressBar()
+        # Setting the initial value and range of the progress bar
+        self.progress_bar.setValue(0)
+        self.progress_bar.setRange(0, 100)
+        # Creating a text edit
+        self.text_edit = QTextEdit()
+        # Setting the text edit to read only
+        self.text_edit.setReadOnly(True)
+        # Creating a layout for the tab
+        self.layout = QVBoxLayout()
+        # Adding the buttons to the layout
+        self.layout.addWidget(self.start_button)
+        # Adding the progress bar and the text edit to the layout
+        self.layout.addWidget(self.progress_bar)
+        self.layout.addWidget(self.text_edit)
+        # Setting the layout for the tab
+        self.setLayout(self.layout)
+        # Main
+        self.is_running = False
 
+    def update_progress_bar(self, value: int):
+        """
+        Обновляет прогресс бар
+        """
+        self.progress_bar.setValue(value)
+        QApplication.processEvents()
 
-def get_token():
-    """
-    Функция для запроса токена от ВКонтакте
-    """
-    if platform.system() == "Windows":
-        text_welcome = """
- [!] Необходимо авторизоваться во ВКонтакте:
+    def add_log(self, text: str):
+        """
+        Добавляет текст в лог
+        """
+        self.text_edit.append(text)
+        QApplication.processEvents()
 
- 1) Перейди по ссылке ниже и нажми "Разрешить" (чтобы скопировать ссылку, выдели её и нажми CTRL+C):
-https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=audio,offline&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
-
- 2) Скопируй ссылку из адресной строки браузера и вставь её сюда (жми CTRL+V):
-
- > """.lstrip()
-    else:
-        text_welcome = """
-[!] Необходимо авторизоваться во ВКонтакте:
-
-1) Перейди по ссылке ниже и нажми "Разрешить":
-https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=audio,offline&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
-2) Скопируй ссылку из адресной строки браузера и вставь её сюда:
-> """.lstrip()
-    token_match = None
-    while token_match is None:
-        token_url = input(text_welcome).strip()
-        token_match = re.match(r'https://oauth.vk.com/blank.html#access_token=([^&]+).+', token_url)
-        if token_match is not None:
-            break
-        logging.error("Некорректная ссылка. После того, как вы нажали \"Разрешить\" ссылка должна начинаться с "
-                      "\"https://oauth.vk.com/blank.html#access_token=\"")
-        text_welcome = "[!] Вставьте корректную ссылку\n> "
-    os.environ["VK_TOKEN"] = token_match.group(1)
-    logging.info("Сохраняю токен в config.env файл...")
-    with open("config.env", "r", encoding="utf-8") as f:
-        env_content = f.read().replace('\r', '').split()
-    for i, env_str in enumerate(env_content):
-        if env_str.startswith("VK_TOKEN=\""):
-            env_content[i] = f'VK_TOKEN="{token_match.group(1)}"'
-    with open("config.env", "w", encoding="utf-8") as f:
-        f.write('\n'.join(env_content))
-    logging.info("Токен успешно сохранен в файл config.env")
-
-
-def main():
-    # VK Authentication
-    logging.info("Авторизуюсь в ВКонтакте...")
-    if VK_TOKEN == "":
-        logging.warning("Не обнаружен токен VK API в config.env файле, запрашиваю авторизацию вручную...")
-        get_token()
-    vk_session = vk_api.VkApi(token=VK_TOKEN, captcha_handler=captcha_handler)
-    vk = vk_session.get_api()
-    tracklist = []
-    try:
-        user_info = vk.users.get()[0]
-    except vk_api.exceptions.ApiError as e:
-        logging.error(f"Кажется, ваш токен устарел, необходимо заново авторизоваться (ошибка: {e})")
-        get_token()
-        user_info = vk.users.get()[0]
-        logging.info("Токен в файле config.env успешно сброшен")
-    title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
-    report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
-    playlist_img = None
-    logging.info(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
-
-    # Getting Spotify playlist
-    use_audio_links = False
-    if SPOTIFY_MODE:
-        while True:
-            spotify_playlist_url = input('\n[!] Вставь сюда ссылку на плейлист в Spotify:\n> ').strip()
-            tracklist_response = requests.post('https://spotya.ru/data.php', json={
-                "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
-                "type": "playlist"
-            })
-            tracklist_text = tracklist_response.text.replace('\ufeff', '')
-            if len(tracklist_text) != 0:
-                break
-            logging.warning("Не сумел прочитать треки из плейлиста. У тебя точно открытый плейлист?")
-        logging.info(f"Нашел {tracklist_text.count('&#10;') + 1} треков в плейлисте")
-        tracklist_content = tracklist_text.replace('&#10;', '\n').strip()
-        logging.info("Сохраняю в tracklist.txt...")
-        with open("tracklist.txt", "w", encoding="utf-8") as f:
-            f.write(tracklist_content)
-        playlist_info_response = requests.post('https://spotya.ru/data.php', json={
-            "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
-            "type": "poster"
-        })
-        logging.info("Загружаю метаданные...")
-        try:
-            playlist_info = json.loads(playlist_info_response.text.replace('\ufeff', ''))
-        except json.JSONDecodeError as e:
-            logging.warning(f"Не сумел загрузить метаданные из плейлиста ({e}). Пропускаю этот этап...")
+    def show_input_dialog(self, title: str, text: str, default_text: str = "") -> str:
+        """
+        Показывает диалог ввода текста
+        """
+        text, ok = QInputDialog.getText(self, title, text, QLineEdit.Normal, default_text)
+        if ok:
+            return text
         else:
-            title_playlist = playlist_info["name"]
-            playlist_img = playlist_info["image"]
-            logging.info(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
-    elif APPLE_MODE:
-        try:
-            with open(sys.argv[1], newline='', encoding='utf-8') as csvfile:
-                reader = csv.DictReader(csvfile, dialect='excel-tab')
-                tracks = open('tracklist.txt', 'w', encoding="utf-8")
-                for row in reader:
-                    tracks.write(row['Артист'] + ' - ' + row['Название'] + '\n')
-                tracks.close()
-        except FileNotFoundError:
-            logging.warning("Не найден плейлист. Нужно указать корректный путь до файла <имя плейлиста>.txt")
+            return None
+
+    # Defining a function that starts the import process (call main() function with the progress bar and text edit - instead of print() use text_edit.append())
+    def start(self):
+        self.load_env_config()
+        if self.is_running:
+            # Ask user is he sure to stop
+            reply = QMessageBox.question(self, 'Подтверждение', 'Вы уверены, что хотите остановить импорт?',
+                                         QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            if reply == QMessageBox.Yes:
+                self.is_running = False
+                self.start_button.setText("Начать импорт")
+                self.add_log("Остановлено пользователем")
+
             return
-    elif VK_LINKS_MODE:
-        use_audio_links = True
 
-    # Open tracklist
-    logging.info("Загружаю треклист...")
-    try:
-        with open("tracklist.txt", "r", encoding="utf-8") as f:
-            text_lines = f.readlines()
-    except FileNotFoundError:
-        logging.warning("Не найден треклист (tracklist.txt). Вы не забыли его предварительно создать?")
-        return
-    if use_audio_links:
-        for text_line in text_lines:
-            parsed_row = re.match(r"^https://vk\.com/audio(\d+)_(\d+)(?:_([a-z0-9]+))?", text_line)
-            if parsed_row is not None and len(parsed_row.groups()) == 3:
-                tracklist.append(parsed_row.groups())
-    else:
-        for text_line in text_lines:
-            parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
-            if parsed_row is not None:
-                tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
-                continue
-            parsed_row = re.match(r"^(\S+)\s(.+)", text_line)
-            if parsed_row is not None:
-                track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
-                tracklist.append(track_info)
-                logging.warning(f"В строчке треклиста нет дефиса, разделил вручную: {track_info[0]} - {track_info[1]}")
+        # Rename the start button to pause
+        self.is_running = True
+        self.start_button.setText("Стоп")
 
-    # Search and add tracks
-    if REVERSE:
-        tracklist.reverse()
-    logging.info(f"Буду {'добавлять' if use_audio_links else 'искать'} {len(tracklist)} из {len(text_lines)} треков...")
-    ok_tracks = []
-    failed_tracks = []
-    questionable_tracks = []
-    added_count = 0
-    chucked_rows = list(chunks(tracklist, 1000))
-    playlists = []
-    for k, chunk_row in enumerate(chucked_rows, 1):
-        logging.info("Создаем плейлист для добавления музыки...")
-        if len(chucked_rows) > 1:
-            title_playlist = f'[{k}/{len(chucked_rows)}] {title_playlist}'
-        playlist_response = vk_session.method("audio.createPlaylist", {
-            "owner_id": user_info['id'],
-            "title": title_playlist
-        })
-        playlists.append(f"https://vk.com/audios{user_info['id']}?"
-                         f"section=all&z=audio_playlist{user_info['id']}_{playlist_response['id']}")
-        if 'id' not in playlist_response:
-            raise PermissionError(
-                f"VK не позволяет создать плейлист, повторите позже. Доп. информация: {playlist_response}")
-        for i, track_row in enumerate(chunk_row, 1):
-            if not use_audio_links:
-                artist, title = track_row
-                logging.info(f"Ищу трек \"{title}\" от исполнителя {artist} ({i} из {len(tracklist)})...")
-                try:
-                    response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
-                except vk_api.VkApiError as e:
-                    logging.warning(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
-                    sleep(TIMEOUT_AFTER_ERROR)
-                    response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
-                if 'items' not in response:
-                    raise PermissionError(
-                        f"VK временно заблокировал доступ к API, повторите позже. Доп. информация: {response}")
-                if len(response['items']) == 0:
-                    failed_tracks.append(track_row)
-                    logging.warning(f"Трек не найден в VK Музыке (исполнитель: {artist}, трек: {title})")
-                    continue
-                full_matched = None
-                for item in response['items']:
-                    if item['artist'].lower() == artist.lower() and title.lower() == item['title'].lower():
-                        full_matched = item
-                        break
-                if full_matched is not None:
-                    ok_tracks.append(track_row)
-                    track_info = full_matched
-                    logging.info(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
-                elif STRICT_SEARCH:
-                    failed_tracks.append(track_row)
-                    logging.warning(
-                        f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
-                    continue
-                else:
-                    partially_matched = response['items'][0]
-                    track_info = partially_matched
-                    questionable_tracks.append(track_row + (partially_matched['artist'], partially_matched['title'],))
-                    logging.info(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
-                                 f"{partially_matched['title']}\"")
-                logging.info(
-                    f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
-            else:
-                owner_id, track_id, access_key = track_row
-                track_info = {
-                    'owner_id': owner_id,
-                    'id': track_id,
-                    'access_key': access_key,
-                    'title': '',
-                    'artist': '',
-                }
-            audio_ids = f"{track_info['owner_id']}_{track_info['id']}"
-            if use_audio_links and track_info['access_key'] is not None:
-                audio_ids += f"_{track_info['access_key']}"
-            try:
-                add_to_playlist_response = vk_session.method("audio.addToPlaylist", {
-                    "owner_id": user_info['id'],
-                    "playlist_id": playlist_response['id'],
-                    "audio_ids": audio_ids,
+        # VK Authentication
+        self.add_log("Авторизуюсь в ВКонтакте...")
+        if self.env.VK_TOKEN is None:
+            self.add_log("Не обнаружен токен VK API в config.env файле, запрашиваю авторизацию вручную...")
+            self.get_token()
+        vk_session = vk_api.VkApi(token=self.env.VK_TOKEN,
+                                  captcha_handler=lambda captcha: self.captcha_handler(captcha))
+        vk = vk_session.get_api()
+        tracklist = []
+        try:
+            user_info = vk.users.get()[0]
+        except vk_api.exceptions.ApiError as e:
+            self.add_log(f"Кажется, ваш токен устарел, необходимо заново авторизоваться (ошибка: {e})")
+            self.get_token()
+            user_info = vk.users.get()[0]
+            self.add_log("Токен в файле config.env успешно сброшен")
+        title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
+        report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
+        playlist_img = None
+        self.add_log(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
+
+        # Getting Spotify playlist
+        use_audio_links = False
+        if self.env.SPOTIFY_MODE:
+            while True:
+                spotify_playlist_url = self.show_input_dialog('Ссылка на Spotify', 'Вставь сюда ссылку на плейлист в Spotify').strip()
+                # Use better input dialog in pyside2 (QInputDialog)
+                tracklist_response = requests.post('https://spotya.ru/data.php', json={
+                    "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
+                    "type": "playlist"
                 })
-            except vk_api.VkApiError as e:
-                logging.warning(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд...")
-                sleep(TIMEOUT_AFTER_ERROR)
-                delayed_response = None
+                tracklist_text = tracklist_response.text.replace('\ufeff', '')
+                if len(tracklist_text) != 0:
+                    break
+                self.add_log("Не сумел прочитать треки из плейлиста. У тебя точно открытый плейлист?")
+            self.add_log(f"Нашел {tracklist_text.count('&#10;') + 1} треков в плейлисте")
+            tracklist_content = tracklist_text.replace('&#10;', '\n').strip()
+            self.add_log("Сохраняю в tracklist.txt...")
+            with open("tracklist.txt", "w", encoding="utf-8") as f:
+                f.write(tracklist_content)
+            playlist_info_response = requests.post('https://spotya.ru/data.php', json={
+                "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
+                "type": "poster"
+            })
+            self.add_log("Загружаю метаданные...")
+            try:
+                playlist_info = json.loads(playlist_info_response.text.replace('\ufeff', ''))
+            except json.JSONDecodeError as e:
+                self.add_log(f"Не сумел загрузить метаданные из плейлиста ({e}). Пропускаю этот этап...")
+            else:
+                title_playlist = playlist_info["name"]
+                playlist_img = playlist_info["image"]
+                self.add_log(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
+        elif self.env.APPLE_MODE:
+            try:
+                with open(sys.argv[1], newline='', encoding='utf-8') as csvfile:
+                    reader = csv.DictReader(csvfile, dialect='excel-tab')
+                    tracks = open('tracklist.txt', 'w', encoding="utf-8")
+                    for row in reader:
+                        tracks.write(row['Артист'] + ' - ' + row['Название'] + '\n')
+                    tracks.close()
+            except FileNotFoundError:
+                self.add_log("Не найден плейлист. Нужно указать корректный путь до файла <имя плейлиста>.txt")
+                return
+        elif self.env.VK_LINKS_MODE:
+            use_audio_links = True
+
+        # Open tracklist
+        self.add_log("Загружаю треклист...")
+        try:
+            with open("tracklist.txt", "r", encoding="utf-8") as f:
+                text_lines = f.readlines()
+        except FileNotFoundError:
+            self.add_log("Не найден треклист (tracklist.txt). Вы не забыли его предварительно создать?")
+            return
+        if use_audio_links:
+            for text_line in text_lines:
+                parsed_row = re.match(r"^https://vk\.com/audio(\d+)_(\d+)(?:_([a-z0-9]+))?", text_line)
+                if parsed_row is not None and len(parsed_row.groups()) == 3:
+                    tracklist.append(parsed_row.groups())
+        else:
+            for text_line in text_lines:
+                parsed_row = re.match(r"^([^-—]+)[-—]([^\r\n]+)", text_line)
+                if parsed_row is not None:
+                    tracklist.append((parsed_row.group(1).strip(), parsed_row.group(2).strip()))
+                    continue
+                parsed_row = re.match(r"^(\S+)\s(.+)", text_line)
+                if parsed_row is not None:
+                    track_info = (parsed_row.group(1).strip(), parsed_row.group(2).strip(),)
+                    tracklist.append(track_info)
+                    self.add_log(
+                        f"В строчке треклиста нет дефиса, разделил вручную: {track_info[0]} - {track_info[1]}")
+
+        # Search and add tracks
+        if self.env.REVERSE:
+            tracklist.reverse()
+        self.add_log(
+            f"Буду {'добавлять' if use_audio_links else 'искать'} {len(tracklist)} из {len(text_lines)} треков...")
+        ok_tracks = []
+        failed_tracks = []
+        questionable_tracks = []
+        added_count = 0
+        chucked_rows = list(chunks(tracklist, 1000))
+        playlists = []
+        for k, chunk_row in enumerate(chucked_rows, 1):
+            self.add_log("Создаем плейлист для добавления музыки...")
+            if len(chucked_rows) > 1:
+                title_playlist = f'[{k}/{len(chucked_rows)}] {title_playlist}'
+            playlist_response = vk_session.method("audio.createPlaylist", {
+                "owner_id": user_info['id'],
+                "title": title_playlist
+            })
+            playlists.append(f"https://vk.com/audios{user_info['id']}?"
+                             f"section=all&z=audio_playlist{user_info['id']}_{playlist_response['id']}")
+            if 'id' not in playlist_response:
+                raise PermissionError(
+                    f"VK не позволяет создать плейлист, повторите позже. Доп. информация: {playlist_response}")
+            for i, track_row in enumerate(chunk_row, 1):
+                if not use_audio_links:
+                    artist, title = track_row
+                    if self.is_running is False:
+                        return
+                    self.add_log(f"Ищу трек \"{title}\" от исполнителя {artist} ({i} из {len(tracklist)})...")
+                    self.update_progress_bar(int(i / len(tracklist) * 100))
+                    try:
+                        response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+                    except vk_api.VkApiError as e:
+                        self.add_log(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
+                        sleep(self.env.TIMEOUT_AFTER_ERROR)
+                        response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+                    if 'items' not in response:
+                        raise PermissionError(
+                            f"VK временно заблокировал доступ к API, повторите позже. Доп. информация: {response}")
+                    if len(response['items']) == 0:
+                        failed_tracks.append(track_row)
+                        self.add_log(f"Трек не найден в VK Музыке (исполнитель: {artist}, трек: {title})")
+                        continue
+                    full_matched = None
+                    for item in response['items']:
+                        if item['artist'].lower() == artist.lower() and title.lower() == item['title'].lower():
+                            full_matched = item
+                            break
+                    if full_matched is not None:
+                        ok_tracks.append(track_row)
+                        track_info = full_matched
+                        self.add_log(f"Успешно нашел трек \"{title}\" от исполнителя {artist}")
+                    elif self.env.STRICT_SEARCH:
+                        failed_tracks.append(track_row)
+                        self.add_log(
+                            f"Точного совпадения не найдено, пропускаю трек (исполнитель: {artist}, трек: {title})")
+                        continue
+                    else:
+                        partially_matched = response['items'][0]
+                        track_info = partially_matched
+                        questionable_tracks.append(
+                            track_row + (partially_matched['artist'], partially_matched['title'],))
+                        self.add_log(f"Нашел похожий трек: \"{artist} - {title}\" → \"{partially_matched['artist']} - "
+                                     f"{partially_matched['title']}\"")
+                    self.add_log(
+                        f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в плейлист...")
+                else:
+                    owner_id, track_id, access_key = track_row
+                    track_info = {
+                        'owner_id': owner_id,
+                        'id': track_id,
+                        'access_key': access_key,
+                        'title': '',
+                        'artist': '',
+                    }
+                audio_ids = f"{track_info['owner_id']}_{track_info['id']}"
+                if use_audio_links and track_info['access_key'] is not None:
+                    audio_ids += f"_{track_info['access_key']}"
                 try:
-                    delayed_response = vk_session.method("audio.addToPlaylist", {
+                    add_to_playlist_response = vk_session.method("audio.addToPlaylist", {
                         "owner_id": user_info['id'],
                         "playlist_id": playlist_response['id'],
-                        "audio_ids": track_info['id'],
+                        "audio_ids": audio_ids,
                     })
                 except vk_api.VkApiError as e:
-                    logging.warning(f"Не получается повторно добавить трек в плейлист \"{e}\". Если ошибка повторится, "
-                                    f"перезапустите скрипт спустя некоторое время ({delayed_response}).")
-            else:
-                if len(add_to_playlist_response) == 0:
-                    logging.warning(f"Ошибка добавления в плейлист: возвращен пустой ответ, возможно, "
-                                    f"у вас нет прав на добавление трека (id: {track_info['id']})")
-                    continue
-            if ADD_TO_LIBRARY:
-                logging.info(
-                    f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в мои аудиозаписи...")
-                add_params = {
-                    'audio_id': track_info['id'],
-                    'owner_id': track_info['owner_id']
-                }
-                if use_audio_links and track_info['access_key'] is not None:
-                    add_params['access_key'] = track_info['access_key']
-                try:
-                    vk_session.method("audio.add", add_params)
-                except vk_api.VkApiError as e:
-                    logging.warning(
-                        f"Не получается добавить трек в мои аудиозаписи, ошибка: \"{e}\". Пропускаю трек...")
+                    self.add_log(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд...")
+                    sleep(self.env.TIMEOUT_AFTER_ERROR)
+                    delayed_response = None
+                    try:
+                        delayed_response = vk_session.method("audio.addToPlaylist", {
+                            "owner_id": user_info['id'],
+                            "playlist_id": playlist_response['id'],
+                            "audio_ids": track_info['id'],
+                        })
+                    except vk_api.VkApiError as e:
+                        self.add_log(
+                            f"Не получается повторно добавить трек в плейлист \"{e}\". Если ошибка повторится, "
+                            f"перезапустите скрипт спустя некоторое время ({delayed_response}).")
                 else:
-                    logging.info(
-                        f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
-            if use_audio_links:
-                logging.info(f"Успешно добавил в плейлист: \"id: {track_info['id']}\"")
-            else:
-                logging.info(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
-            added_count += 1
-            sleep(TIMEOUT_AFTER_SUCCESS)
+                    if len(add_to_playlist_response) == 0:
+                        self.add_log(f"Ошибка добавления в плейлист: возвращен пустой ответ, возможно, "
+                                     f"у вас нет прав на добавление трека (id: {track_info['id']})")
+                        continue
+                if self.env.ADD_TO_LIBRARY:
+                    self.add_log(
+                        f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в мои аудиозаписи...")
+                    add_params = {
+                        'audio_id': track_info['id'],
+                        'owner_id': track_info['owner_id']
+                    }
+                    if use_audio_links and track_info['access_key'] is not None:
+                        add_params['access_key'] = track_info['access_key']
+                    try:
+                        vk_session.method("audio.add", add_params)
+                    except vk_api.VkApiError as e:
+                        self.add_log(
+                            f"Не получается добавить трек в мои аудиозаписи, ошибка: \"{e}\". Пропускаю трек...")
+                    else:
+                        self.add_log(
+                            f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
+                if use_audio_links:
+                    self.add_log(f"Успешно добавил в плейлист: \"id: {track_info['id']}\"")
+                else:
+                    self.add_log(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
+                added_count += 1
+                sleep(self.env.TIMEOUT_AFTER_SUCCESS)
 
-    if len(tracklist) != added_count:
-        logging.warning(f"Выполнено, но в плейлист добавилось не всё: {added_count} из {len(tracklist)}")
-    else:
-        logging.info(f"Выполнено успешно! Все найденные треки добавлены")
+        if len(tracklist) != added_count:
+            self.add_log(f"Выполнено, но в плейлист добавилось не всё: {added_count} из {len(tracklist)}")
+        else:
+            self.add_log(f"Выполнено успешно! Все найденные треки добавлены")
 
-    logging.info(f"Найдено треков с точными совпадениями: {len(ok_tracks)}")
-    logging.info(f"Найдено треков с примерными совпадениями: {len(questionable_tracks)}")
-    logging.info(f"Не найдено треков: {len(failed_tracks)}")
+        self.add_log(f"Найдено треков с точными совпадениями: {len(ok_tracks)}")
+        self.add_log(f"Найдено треков с примерными совпадениями: {len(questionable_tracks)}")
+        self.add_log(f"Не найдено треков: {len(failed_tracks)}")
 
-    logging.info(f"Всего перенесено треков: {added_count} из {len(text_lines)}")
-    with open(fix_relative_path(report_filename), 'w', encoding='utf-8') as f:
-        questionable_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"' for t in questionable_tracks)
-        ok_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in ok_tracks)
-        failed_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in failed_tracks)
-        playlists_str = '\n'.join(f'- {p}' for p in playlists)
-        f.write(f"""
+        self.add_log(f"Всего перенесено треков: {added_count} из {len(text_lines)}")
+        with open(fix_relative_path(report_filename), 'w', encoding='utf-8') as f:
+            questionable_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}" → "{t[2]} - {t[3]}"' for t in questionable_tracks)
+            ok_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in ok_tracks)
+            failed_tracks_str = '\n'.join(f'- "{t[0]} - {t[1]}"' for t in failed_tracks)
+            playlists_str = '\n'.join(f'- {p}' for p in playlists)
+            f.write(f"""
 [ Отчет о перенесенных треках в VK Музыку ]
 
 Дата/время: {datetime.now().strftime('%d.%m.%Y %H:%M')}.
@@ -463,23 +442,337 @@ def main():
 - Телеграм-канал автора: https://t.me/mewnotes
 - Поддержать разработчика: https://mewforest.github.io/donate/
 - Исходный код: https://github.com/mewforest/vk-music-import
-    """.strip())
+            """.strip())
 
-    logging.info(f"Файл отчета сгенерирован в текущей папке (\"{report_filename}\")")
-    if len(playlists) == 1:
-        logging.info(f"Скрипт выполнен! Твой плейлист готов: {playlists[0]}")
+        self.add_log(f"Файл отчета сгенерирован в текущей папке (\"{report_filename}\")")
+        if len(playlists) == 1:
+            self.add_log(f"Скрипт выполнен! Твой плейлист готов: {playlists[0]}")
+        else:
+            self.add_log(f"Скрипт выполнен! Ваши плейлисты готовы: {', '.join(playlists)}")
+        if playlist_img is not None:
+            self.add_log(f"Дополнительно: скачать обложку плейлиста можно здесь: {playlist_img}")
+        if platform.system() == "Windows":
+            webbrowser.open(fix_relative_path(report_filename))
+
+    def captcha_handler(self, captcha: Captcha):
+        """
+        Хендлер для обработки капчи из VK
+        """
+        start_time = datetime.now()
+        captcha_url = captcha.get_url()
+        parsed_url = urlparse(captcha_url)
+        parsed_url_params = parse_qs(parsed_url.query)
+        captcha_sid = parsed_url_params["sid"][0]
+        captcha_s = parsed_url_params["s"][0]
+        captcha_params_parsed = {
+            "sid": int(captcha_sid),
+            "s": int(captcha_s)
+        }
+        if self.env.BYPASS_CAPTCHA:
+            self.add_log("Появилась капча, пытаюсь автоматически её решить...")
+            key = solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"])
+        else:
+            self.add_log("Чтобы продолжить, введи капчу с картинки во всплывающем окне")
+            response = requests.get(f'https://api.vk.com/captcha.php?sid={0}&s={1}'.format(
+                captcha_params_parsed["sid"], captcha_params_parsed["s"]))
+            img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
+            key = get_user_solve(captcha_image=img, captcha_params_parsed=captcha_params_parsed)
+            if key is None:
+                self.add_log("Капча не решена, завершаю работу...")
+                sys.exit(1)
+        elapsed_time = datetime.now() - start_time
+        self.add_log(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
+        self.add_log(f"Чтобы VK не ругался, жду {self.env.TIMEOUT_AFTER_CAPTCHA} сек...")
+        self.add_log(f"(Программа может подвиснуть на {self.env.TIMEOUT_AFTER_CAPTCHA} секунд)")
+        sleep(self.env.TIMEOUT_AFTER_CAPTCHA)
+        self.add_log("Отправляю решение капчи...")
+        return captcha.try_again(key)
+
+
+# Creating a class for the settings tab
+class SettingsTab(QWidget, MainEnv):
+    def __init__(self):
+        # Call both parents constructors
+        QWidget.__init__(self)
+        MainEnv.__init__(self)
+        # Creating a form layout for the tab
+        self.layout = QFormLayout()
+        # Creating radio buttons for the mode selection
+        self.tracklist_mode = QRadioButton("Tracklist mode")
+        self.spotify_mode = QRadioButton("Spotify mode")
+        self.apple_mode = QRadioButton("Apple mode")
+        self.vk_links_mode = QRadioButton("VK links mode")
+        self.reverse = QCheckBox()
+        self.strict_search = QCheckBox()
+        self.add_to_library = QCheckBox()
+        self.bypass_captcha = QCheckBox()
+        # Creating line edits for the string and integer environment variables
+        self.vk_token = QLineEdit()
+        self.vk_token.setPlaceholderText("Click the button below to get the VK token")
+        self.timeout_after_error = QLineEdit()
+        self.timeout_after_captcha = QLineEdit()
+        self.timeout_after_success = QLineEdit()
+        # Setting the initial values of the widgets from the environment variables
+        self.tracklist_mode.setChecked(True)
+        self.reverse.setChecked(self.env.REVERSE)
+        self.strict_search.setChecked(self.env.STRICT_SEARCH)
+        self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
+        self.vk_token.setText(self.env.VK_TOKEN)
+        self.timeout_after_error.setText(str(self.env.TIMEOUT_AFTER_ERROR))
+        self.timeout_after_captcha.setText(str(self.env.TIMEOUT_AFTER_CAPTCHA))
+        self.timeout_after_success.setText(str(self.env.TIMEOUT_AFTER_SUCCESS))
+        # Adding the widgets and their labels to the form layout
+        self.layout.addRow("Mode:", self.tracklist_mode)
+        self.layout.addRow("", self.spotify_mode)
+        self.layout.addRow("", self.apple_mode)
+        self.layout.addRow("", self.vk_links_mode)
+        self.layout.addRow("Bypass captcha", self.bypass_captcha)
+        self.layout.addRow("Reverse", self.reverse)
+        self.layout.addRow("Strict search", self.strict_search)
+        self.layout.addRow("Add to library", self.add_to_library)
+        # VK Token + refresh button
+        self.vk_token_layout = QHBoxLayout()
+        self.vk_token_layout.addWidget(self.vk_token)
+        self.vk_token_refresh_button = QPushButton("Refresh")
+        self.vk_token_refresh_button.clicked.connect(self.get_token)
+        self.vk_token_layout.addWidget(self.vk_token_refresh_button)
+        self.layout.addRow("VK token", self.vk_token_layout)
+
+        self.layout.addRow("Timeout after error", self.timeout_after_error)
+        self.layout.addRow("Timeout after captcha", self.timeout_after_captcha)
+        self.layout.addRow("Timeout after success", self.timeout_after_success)
+        # Add help tooltip to the VK token line edit
+        self.vk_token.setToolTip("Click the button below to get the VK token")
+        # Creating a save button
+        self.save_button = QPushButton("Save")
+        # Connecting the save button to a function that updates the environment variables
+        self.save_button.clicked.connect(self.save_envs)
+        # Adding the save button to the form layout
+        self.layout.addRow(self.save_button)
+        # Setting the layout for the tab
+        self.setLayout(self.layout)
+
+    # Defining a function that updates the environment variables
+    def save_envs(self):
+        # Converting the checkboxes to 0 or 1
+        bypass_captcha = "1" if self.bypass_captcha.isChecked() else "0"
+        spotify_mode = "1" if self.spotify_mode.isChecked() else "0"
+        apple_mode = "1" if self.apple_mode.isChecked() else "0"
+        vk_links_mode = "1" if self.vk_links_mode.isChecked() else "0"
+        reverse = "1" if self.reverse.isChecked() else "0"
+        strict_search = "1" if self.strict_search.isChecked() else "0"
+        add_to_library = "1" if self.add_to_library.isChecked() else "0"
+        # If tracklist mode is selected, set all the other modes to 0
+        if self.tracklist_mode.isChecked():
+            spotify_mode = "0"
+            apple_mode = "0"
+            vk_links_mode = "0"
+        # Getting the values of the line edits
+        vk_token = self.vk_token.text()
+        timeout_after_error = self.timeout_after_error.text()
+        timeout_after_captcha = self.timeout_after_captcha.text()
+        timeout_after_success = self.timeout_after_success.text()
+        # Setting the environment variables using the set_key function
+        set_key("config.env", "BYPASS_CAPTCHA", bypass_captcha)
+        set_key("config.env", "SPOTIFY_MODE", spotify_mode)
+        set_key("config.env", "APPLE_MODE", apple_mode)
+        set_key("config.env", "VK_LINKS_MODE", vk_links_mode)
+        set_key("config.env", "REVERSE", reverse)
+        set_key("config.env", "STRICT_SEARCH", strict_search)
+        set_key("config.env", "ADD_TO_LIBRARY", add_to_library)
+        set_key("config.env", "VK_TOKEN", vk_token)
+        set_key("config.env", "TIMEOUT_AFTER_ERROR", timeout_after_error)
+        set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", timeout_after_captcha)
+        set_key("config.env", "TIMEOUT_AFTER_SUCCESS", timeout_after_success)
+        # Reloading the config.env file
+        self.load_env_config()
+
+    def get_token(self):
+        self.token_dialog = QDialog()
+        self.token_dialog.setWindowTitle('Необходимо авторизоваться во ВКонтакте')
+        self.token_dialog.setFixedSize(400, 300)
+
+        layout = QVBoxLayout()
+
+        # Add instructions label
+        instructions_label = QLabel(self.token_dialog)
+        instructions_label.setText("""
+        1) Перейди по ссылке ниже и нажми "Разрешить" (если необходимо, авторизуйся в ВКонтакте)
+        2) Скопируй ссылку из адресной строки браузера и вставь её в поле ниже
+        """.strip())
+        layout.addWidget(instructions_label)
+
+        # Add open link button
+        open_link_button = QPushButton(self.token_dialog)
+        open_link_button.setText('Open VK Authorization Link')
+        layout.addWidget(open_link_button)
+
+        # Add copy link button
+        copy_link_button = QPushButton(self.token_dialog)
+        copy_link_button.setText('Copy VK Authorization Link')
+        layout.addWidget(copy_link_button)
+
+        # Connect open link button clicked event
+        open_link_button.clicked.connect(self.open_vk_authorization_link)
+
+        # Connect copy link button clicked event
+        copy_link_button.clicked.connect(self.copy_vk_authorization_link)
+
+        self.token_dialog.setLayout(layout)
+        self.token_dialog.exec_()
+
+    def open_vk_authorization_link(self):
+        link = 'https://oauth.vk.com/oauth/authorize?client_id=6121396' \
+               '&scope=audio,offline' \
+               '&redirect_uri=https://oauth.vk.com/blank.html' \
+               '&display=page' \
+               '&response_type=token' \
+               '&revoke=1' \
+               '&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991'
+        QDesktopServices.openUrl(QUrl(link))
+        self.input_token_url()
+
+    def copy_vk_authorization_link(self):
+        link = 'https://oauth.vk.com/oauth/authorize?client_id=6121396' \
+               '&scope=audio,offline' \
+               '&redirect_uri=https://oauth.vk.com/blank.html' \
+               '&display=page' \
+               '&response_type=token' \
+               '&revoke=1' \
+               '&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991'
+        clipboard = QApplication.clipboard()
+        clipboard.setText(link, QClipboard.Clipboard)
+        self.input_token_url()
+
+    def input_token_url(self):
+        """
+        Shows input dialog for token url and saves it to config.env
+        """
+        self.token_input_dialog = QDialog()
+        self.token_input_dialog.setWindowTitle('Вставь ссылку с токеном')
+        self.token_input_dialog.setFixedSize(400, 300)
+
+        layout = QVBoxLayout()
+
+        # Add instructions label
+        instructions_label = QLabel(self.token_input_dialog)
+        instructions_label.setText(
+            "1. Перейди по ссылке ниже и нажми \"Разрешить\"\n"
+            "(если необходимо, авторизуйся в ВКонтакте)\n"
+            "2. Скопируй ссылку из адресной строки браузера и вставь её в поле ниже")
+        layout.addWidget(instructions_label)
+
+        # Add token entry
+        token_entry = QLineEdit(self.token_input_dialog)
+        layout.addWidget(token_entry)
+
+        # Add submit button
+        submit_button = QPushButton(self.token_input_dialog)
+        submit_button.setText('Submit')
+        layout.addWidget(submit_button)
+
+        # Connect submit button clicked event
+        submit_button.clicked.connect(self.apply_token)
+
+        self.token_input_dialog.setLayout(layout)
+        self.token_input_dialog.exec_()
+
+    def apply_token(self):
+        """
+        Функция для запроса токена от ВКонтакте
+        """
+        token_url = self.token_input_dialog.findChild(QLineEdit).text()
+        token_match = re.match(r'https://oauth.vk.com/blank.html#access_token=([^&]+).+', token_url)
+        if token_match is None:
+            # self.token_dialog.accept()
+            warn_text = "Некорректная ссылка. После того, как вы нажали \"Разрешить\" ссылка должна начинаться с https://oauth.vk.com/blank.html#access_token="
+            QMessageBox.warning(self.token_input_dialog, "Некорректная ссылка", warn_text)
+            return
+        # Applying token
+        self.token_input_dialog.accept()
+        self.env.VK_TOKEN = token_match.group(1)
+        set_key("config.env", "VK_TOKEN", token_match.group(1))
+        self.load_env_config()
+        # Close token dialog
+        self.token_input_dialog.close()
+        self.token_dialog.close()
+
+
+def chunks(lst, n):
+    """
+    Разделяет список на чанки
+    """
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
+
+
+def get_user_solve(captcha_image: Image, captcha_params_parsed: dict[str, int]) -> Union[str, None]:
+    """
+    Получает решение капчи от пользователя (GUI)
+    """
+    dialog = QDialog()
+    dialog.setWindowTitle('Введи капчу с картинки')
+    dialog.setFixedSize(285, 145)
+
+    layout = QVBoxLayout()
+
+    # Add image label
+    image_label = QLabel(dialog)
+    captcha_image_bytes = captcha_image.tobytes("raw", "RGB")
+    qimage = QImage(captcha_image_bytes, captcha_image.size[0], captcha_image.size[1], QImage.Format_RGB888)
+    image_label.setPixmap(QPixmap.fromImage(qimage))
+    layout.addWidget(image_label)
+
+    # Add captcha solve entry
+    captcha_solve_entry = QLineEdit(dialog)
+    captcha_solve_entry.setText(
+        solve_captcha(sid=captcha_params_parsed["sid"], s=captcha_params_parsed["s"], img=captcha_image))
+    captcha_solve_entry.selectAll()
+    layout.addWidget(captcha_solve_entry)
+
+    # Add submit button
+    submit_button = QPushButton('Отправить решение', dialog)
+    submit_button.clicked.connect(dialog.accept)
+    layout.addWidget(submit_button)
+
+    dialog.setLayout(layout)
+
+    if dialog.exec_() == QDialog.Accepted:
+        captcha_solve = captcha_solve_entry.text()
+        return captcha_solve if captcha_solve else None
     else:
-        logging.info(f"Скрипт выполнен! Ваши плейлисты готовы: {', '.join(playlists)}")
-    if playlist_img is not None:
-        logging.info(f"Дополнительно: скачать обложку плейлиста можно здесь: {playlist_img}")
-    if platform.system() == "Windows":
-        webbrowser.open(fix_relative_path(report_filename))
+        return None
+
+
+def solve_captcha(sid, s, img=None):
+    """
+    Обработчик капчи с помощью машинного зрения
+    """
+    if img is None:
+        response = requests.get(f'https://api.vk.com/captcha.php?sid={sid}&s={s}')
+        img = Image.open(BytesIO(response.content)).resize((128, 64)).convert('RGB')
+    x = np.array(img).reshape(1, -1)
+    x = np.expand_dims(x, axis=0)
+    x = x / np.float32(255.)
+    session = rt.InferenceSession(fix_relative_path('models/captcha_model.onnx'))
+    session2 = rt.InferenceSession(fix_relative_path('models/ctc_model.onnx'))
+    out = session.run(None, dict([(inp.name, x[n]) for n, inp in enumerate(session.get_inputs())]))
+    out = session2.run(None, dict([(inp.name, np.float32(out[n])) for n, inp in enumerate(session2.get_inputs())]))
+    char_map = ' 24578acdehkmnpqsuvxyz'
+    captcha = ''.join([char_map[c] for c in np.uint8(out[-1][out[0] > 0])])
+    return captcha
 
 
 if __name__ == "__main__":
-    try:
-        main()
-    except Exception as e:
-        logging.exception(e)
-    finally:
-        input("Нажмите Enter, чтобы завершить работу программы...")
+    # Creating an application instance
+    app = QApplication(sys.argv)
+    # Apply the complete dark theme to your Qt App.
+    qdarktheme.setup_theme('auto', additional_qss="QToolTip {color: black;}")
+    # Setting the high DPI scaling
+    qdarktheme.enable_hi_dpi()
+    # Creating a main window instance
+    window = MainWindow()
+    # Showing the main window
+    window.show()
+    # Executing the application
+    sys.exit(app.exec_())
