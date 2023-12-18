@@ -25,11 +25,12 @@ import onnxruntime as rt
 from PySide2.QtGui import QPixmap, QClipboard, QDesktopServices
 from dotenv import load_dotenv, set_key
 from vk_api import Captcha
-from typing import Union
+from typing import Union, Optional, List
 from PIL import Image, ImageTk
 import qdarktheme
 from PySide2.QtWidgets import QApplication, QWidget, QTabWidget, QVBoxLayout, QFormLayout, QCheckBox, QLineEdit, \
-    QProgressBar, QTextEdit, QPushButton, QDialog, QLabel, QHBoxLayout, QRadioButton, QMessageBox, QInputDialog
+    QProgressBar, QTextEdit, QPushButton, QDialog, QLabel, QHBoxLayout, QRadioButton, QMessageBox, QInputDialog, \
+    QFileDialog
 from PySide2.QtCore import Qt, QUrl
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
 from PySide2.QtGui import QPixmap, QImage
@@ -164,8 +165,7 @@ class MainTab(QWidget, MainEnv):
             reply = QMessageBox.question(self, 'Подтверждение', 'Вы уверены, что хотите остановить импорт?',
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.Yes:
-                self.is_running = False
-                self.start_button.setText("Начать импорт")
+                self.stop_import()
                 self.add_log("Останавливается пользователем...")
 
             return
@@ -193,14 +193,19 @@ class MainTab(QWidget, MainEnv):
         title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
         playlist_img = None
-        self.add_log(f"Авторизировался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
+        self.add_log(f"Авторизовался как {user_info['first_name']} {user_info['last_name']} (id: {user_info['id']})")
 
         # Getting Spotify playlist
         use_audio_links = False
         if self.env.SPOTIFY_MODE:
             while True:
                 spotify_playlist_url = self.show_input_dialog('Ссылка на Spotify',
-                                                              'Вставь сюда ссылку на плейлист в Spotify').strip()
+                                                              'Вставь сюда ссылку на плейлист в Spotify')
+                if spotify_playlist_url is None:
+                    self.stop_import()
+                    self.add_log("Отменено пользователем...")
+                    return
+                spotify_playlist_url = spotify_playlist_url.strip()
                 # Use better input dialog in pyside2 (QInputDialog)
                 tracklist_response = requests.post('https://spotya.ru/data.php', json={
                     "url": f"https://spotya.ru/api.php?playlist={spotify_playlist_url}",
@@ -309,10 +314,16 @@ class MainTab(QWidget, MainEnv):
             if len(chucked_rows) > 1:
                 title_playlist = f'[{k}/{len(chucked_rows)}] {title_playlist}'
             if not is_continue:
-                self.playlist_response = vk_session.method("audio.createPlaylist", {
-                    "owner_id": user_info['id'],
-                    "title": title_playlist
-                })
+                try:
+                    self.playlist_response = vk_session.method("audio.createPlaylist", {
+                        "owner_id": user_info['id'],
+                        "title": title_playlist
+                    })
+                except vk_api.VkApiError as e:
+                    self.add_log(
+                        f"Не получается создать плейлист, ошибка: \"{e}\".Попробуйте еще раз позже или обновите токен.")
+                    self.stop_import()
+                    return
             is_continue = False
             playlists.append(f"https://vk.com/audios{user_info['id']}?"
                              f"section=all&z=audio_playlist{user_info['id']}_{self.playlist_response['id']}")
@@ -481,8 +492,7 @@ class MainTab(QWidget, MainEnv):
         self.add_log(f"Файл отчета сгенерирован в текущей папке (\"{report_filename}\")")
 
         # Set gui to Start again
-        self.is_running = False
-        self.start_button.setText("Начать импорт")
+        self.stop_import()
 
         if os.path.exists(fix_relative_path("progress.json")):
             os.remove(fix_relative_path("progress.json"))
@@ -490,10 +500,64 @@ class MainTab(QWidget, MainEnv):
             self.add_log(f"Скрипт выполнен! Твой плейлист готов: {playlists[0]}")
         else:
             self.add_log(f"Скрипт выполнен! Ваши плейлисты готовы: {', '.join(playlists)}")
-        if playlist_img is not None:
-            self.add_log(f"Дополнительно: скачать обложку плейлиста можно здесь: {playlist_img}")
+        # if playlist_img is not None:
+        #    self.add_log(f"Дополнительно: скачать обложку плейлиста можно здесь: {playlist_img}")
+        self.show_success_dialog("Импорт завершен", playlists, report_filename, playlist_img)
+        # if platform.system() == "Windows":
+        #     webbrowser.open(fix_relative_path(report_filename))
+
+    def show_success_dialog(self, title: str, playlists_urls: List[str], report_filename, playlistImageUrl: Optional[str] = None):
+        """
+        Показывает диалог успешного завершения импорта плейлиста: ссылки на плейлисты и обложку с кнопкой скачивания (если есть).
+        А еще тут есть кнопка "просмотреть отчет"
+        """
+        dialog = QDialog(self)
+        dialog.setWindowTitle(title)
+        dialog.setWindowModality(Qt.ApplicationModal)
+        dialog.resize(400, 200)
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel("<b>Импорт завершен! Импорт плейлиста(ов) завершен:</b>"))
+        for playlist_url in playlists_urls:
+            playlist_url_label = QLabel(f'<a href="{playlist_url}">{playlist_url}</a>')
+            playlist_url_label.setOpenExternalLinks(True)
+            layout.addWidget(playlist_url_label)
         if platform.system() == "Windows":
-            webbrowser.open(fix_relative_path(report_filename))
+            show_report_button = QPushButton("Просмотреть отчет")
+            show_report_button.clicked.connect(
+                lambda: webbrowser.open(fix_relative_path(report_filename)))
+            layout.addWidget(show_report_button)
+
+        # Playlist images
+        if playlistImageUrl is not None:
+            playlist_image_response = requests.get(playlistImageUrl)
+            playlist_image = QImage()
+            playlist_image.loadFromData(playlist_image_response.content)
+            playlist_image_label = QLabel()
+            playlist_image_label.setPixmap(QPixmap.fromImage(playlist_image))
+            # Set image width
+            playlist_image_label.setScaledContents(True)
+            playlist_image_label.setFixedWidth(200)
+            playlist_image_label.setFixedHeight(200)
+            layout.addWidget(playlist_image_label)
+            download_image_button = QPushButton("Скачать обложку")
+            download_image_button.clicked.connect(lambda: self.download_image(playlist_image_response.content))
+            layout.addWidget(download_image_button)
+        dialog.setLayout(layout)
+        dialog.exec_()
+
+    def download_image(self, image: bytes):
+        """
+        Скачивает обложку плейлиста
+        """
+        filename, _ = QFileDialog.getSaveFileName(self, 'Сохранить обложку плейлиста', 'playlist.jpg',
+                                                  "Images (*.jpg *.png)")
+        if filename:
+            with open(filename, "wb") as f:
+                f.write(image)
+
+    def stop_import(self):
+        self.is_running = False
+        self.start_button.setText("Начать импорт")
 
     def save_progress_to_file(self):
         """
@@ -514,21 +578,18 @@ class MainTab(QWidget, MainEnv):
             # If captcha showed up before, show dialog yes/no to pause current progress and exit
             reply = QMessageBox.question(self, 'Сделаем паузу?',
                                          'Кажется, VK снова запросил капчу, это значит, что vk временно блокирует возможность импорта музыки.\n'
-                                         'Возможно, стоит сделать перерыв в запросах и продолжить позже?\n'
+                                         'Возможно, стоит сделать перерыв в запросах и продолжить позже?\n\n'
                                          'Если вы нажмете "Да", то скрипт остановится, но вы сможете продолжить импорт позже.\n'
                                          'Если вы нажмете "Нет", то скрипт продолжит работу, но возможно, что vk так и не захочет импортировать.\n',
                                          QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             if reply == QMessageBox.Yes:
                 self.save_progress_to_file()
-                self.is_running = False
-                self.start_button.setText("Начать импорт")
+                self.stop_import()
                 self.add_log("Останавливается пользователем...")
-                return captcha.try_again('123')
-                return None
+                return captcha.try_again('')
             else:
                 self.add_log("Продолжаю работу, но vk может не захотеть импортировать...")
                 self.is_under_ban = False
-
 
         self.is_under_ban = True
         start_time = datetime.now()
@@ -586,7 +647,12 @@ class SettingsTab(QWidget, MainEnv):
         self.timeout_after_captcha = QLineEdit()
         self.timeout_after_success = QLineEdit()
         # Setting the initial values of the widgets from the environment variables
-        self.tracklist_mode.setChecked(True)
+        self.tracklist_mode.setChecked(
+            not self.env.SPOTIFY_MODE and not self.env.APPLE_MODE and not self.env.VK_LINKS_MODE)
+        self.spotify_mode.setChecked(self.env.SPOTIFY_MODE)
+        self.apple_mode.setChecked(self.env.APPLE_MODE)
+        self.vk_links_mode.setChecked(self.env.VK_LINKS_MODE)
+        self.bypass_captcha.setChecked(self.env.BYPASS_CAPTCHA)
         self.reverse.setChecked(self.env.REVERSE)
         self.strict_search.setChecked(self.env.STRICT_SEARCH)
         self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
