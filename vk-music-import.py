@@ -632,17 +632,17 @@ class SettingsTab(QWidget, MainEnv):
         # Creating a form layout for the tab
         self.layout = QFormLayout()
         # Creating radio buttons for the mode selection
-        self.tracklist_mode = QRadioButton("Tracklist mode")
-        self.spotify_mode = QRadioButton("Spotify mode")
-        self.apple_mode = QRadioButton("Apple mode")
-        self.vk_links_mode = QRadioButton("VK links mode")
+        self.tracklist_mode = QRadioButton("Треклиста")
+        self.spotify_mode = QRadioButton("Spotify")
+        self.apple_mode = QRadioButton("Apple Music")
+        self.vk_links_mode = QRadioButton("Списка ссылок на треки")
         self.reverse = QCheckBox()
         self.strict_search = QCheckBox()
         self.add_to_library = QCheckBox()
         self.bypass_captcha = QCheckBox()
         # Creating line edits for the string and integer environment variables
         self.vk_token = QLineEdit()
-        self.vk_token.setPlaceholderText("Click the button below to get the VK token")
+        self.vk_token.setPlaceholderText("Чтобы заново войти в VK, нажмите кнопку справа")
         self.timeout_after_error = QLineEdit()
         self.timeout_after_captcha = QLineEdit()
         self.timeout_after_success = QLineEdit()
@@ -661,29 +661,29 @@ class SettingsTab(QWidget, MainEnv):
         self.timeout_after_captcha.setText(str(self.env.TIMEOUT_AFTER_CAPTCHA))
         self.timeout_after_success.setText(str(self.env.TIMEOUT_AFTER_SUCCESS))
         # Adding the widgets and their labels to the form layout
-        self.layout.addRow("Mode:", self.tracklist_mode)
+        self.layout.addRow("Импортировать из:", self.tracklist_mode)
         self.layout.addRow("", self.spotify_mode)
         self.layout.addRow("", self.apple_mode)
         self.layout.addRow("", self.vk_links_mode)
-        self.layout.addRow("Bypass captcha", self.bypass_captcha)
-        self.layout.addRow("Reverse", self.reverse)
-        self.layout.addRow("Strict search", self.strict_search)
-        self.layout.addRow("Add to library", self.add_to_library)
+        self.layout.addRow("Автоматический обход капчи", self.bypass_captcha)
+        self.layout.addRow("Импорт в обратном порядке", self.reverse)
+        self.layout.addRow("Только точные совпадения", self.strict_search)
+        self.layout.addRow("Добавлять в Мои Аудиозаписи", self.add_to_library)
         # VK Token + refresh button
         self.vk_token_layout = QHBoxLayout()
         self.vk_token_layout.addWidget(self.vk_token)
-        self.vk_token_refresh_button = QPushButton("Refresh")
+        self.vk_token_refresh_button = QPushButton("Обновить")
         self.vk_token_refresh_button.clicked.connect(self.get_token)
         self.vk_token_layout.addWidget(self.vk_token_refresh_button)
-        self.layout.addRow("VK token", self.vk_token_layout)
+        self.layout.addRow("VK токен", self.vk_token_layout)
 
-        self.layout.addRow("Timeout after error", self.timeout_after_error)
-        self.layout.addRow("Timeout after captcha", self.timeout_after_captcha)
-        self.layout.addRow("Timeout after success", self.timeout_after_success)
+        self.layout.addRow("Задержка после ошибк, сек", self.timeout_after_error)
+        self.layout.addRow("Задержка после капч, сек", self.timeout_after_captcha)
+        self.layout.addRow("Задержка между запросами, сек", self.timeout_after_success)
         # Add help tooltip to the VK token line edit
         self.vk_token.setToolTip("Click the button below to get the VK token")
         # Creating a save button
-        self.save_button = QPushButton("Save")
+        self.save_button = QPushButton("Сохранить настройки")
         # Connecting the save button to a function that updates the environment variables
         self.save_button.clicked.connect(self.save_envs)
         # Adding the save button to the form layout
