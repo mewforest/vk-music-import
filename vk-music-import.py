@@ -7,7 +7,6 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
 """
 import csv
 import json
-import logging
 import os
 import platform
 import re
@@ -35,6 +34,9 @@ from PySide2.QtCore import Qt, QUrl
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
 from PySide2.QtGui import QPixmap, QImage
 from PySide2.QtCore import Qt
+# from curl_cffi import requests
+# from bs4 import BeautifulSoup
+# from fuzzywuzzy import fuzz
 
 
 def fix_relative_path(relative_path: str) -> str:
@@ -68,6 +70,7 @@ class MainEnv:
         self.env.REVERSE = os.getenv("REVERSE", "0") == "1"
         self.env.STRICT_SEARCH = os.getenv("STRICT_SEARCH", "0") == "1"
         self.env.ADD_TO_LIBRARY = os.getenv("ADD_TO_LIBRARY", "0") == "1"
+        #self.env.UPDATE_PLAYLIST = os.getenv("UPDATE_PLAYLIST", "0") == "1"
         self.env.TIMEOUT_AFTER_ERROR = int(os.getenv("TIMEOUT_AFTER_ERROR", "10"))
         self.env.TIMEOUT_AFTER_CAPTCHA = int(os.getenv("TIMEOUT_AFTER_CAPTCHA", "10"))
         self.env.TIMEOUT_AFTER_SUCCESS = int(os.getenv("TIMEOUT_AFTER_SUCCESS", "10"))
@@ -187,9 +190,26 @@ class MainTab(QWidget, MainEnv):
             user_info = vk.users.get()[0]
         except vk_api.exceptions.ApiError as e:
             self.add_log(f"Кажется, ваш токен устарел, необходимо заново авторизоваться (ошибка: {e})")
-            self.get_token()
-            user_info = vk.users.get()[0]
-            self.add_log("Токен в файле config.env успешно сброшен")
+            self.stop_import()
+
+            # Show info dialog with suggestion to go to settings and update token, only with OK button
+            reply = QMessageBox.information(self, 'Токен устарел',
+                                            'Кажется, ваш токен устарел, необходимо войти в VK.\n\n'
+                                            'Перейдите в настройки и нажмите "Авторизоваться".',
+                                            QMessageBox.Ok, QMessageBox.Ok)
+
+            # Show info dialog with suggestion to go to settings and update token
+            # reply = QMessageBox.question(self, 'Токен устарел',
+            #                              'Кажется, ваш токен устарел, необходимо заново авторизоваться.\n'
+            #                              'Перейти в настройки?',
+            #                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+            # if reply == QMessageBox.Yes:
+            #     self.tab_widget.setCurrentIndex(1)
+            # return
+
+            # self.get_token()
+            # user_info = vk.users.get()[0]
+            # self.add_log("Токен в файле config.env успешно сброшен")
         title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
         playlist_img = None
@@ -234,10 +254,12 @@ class MainTab(QWidget, MainEnv):
                 playlist_img = playlist_info["image"]
                 self.add_log(f"Получил метаданные для плейлиста \"{playlist_info['name']}\"")
         elif self.env.APPLE_MODE:
+            self.add_log('Начинаю импорт из Apple Music...')
+            self.add_log('Важно: данный функционал находится в бета-тестировании и может работать некорректно.')
             try:
-                with open(sys.argv[1], newline='', encoding='utf-8') as csvfile:
+                with open(fix_relative_path('tracklist.csv'), newline='', encoding='utf-8') as csvfile:
                     reader = csv.DictReader(csvfile, dialect='excel-tab')
-                    tracks = open('tracklist.txt', 'w', encoding="utf-8")
+                    tracks = open(fix_relative_path('export-tracklist.txt'), 'w', encoding="utf-8")
                     for row in reader:
                         tracks.write(row['Артист'] + ' - ' + row['Название'] + '\n')
                     tracks.close()
@@ -303,6 +325,73 @@ class MainTab(QWidget, MainEnv):
                 os.remove(fix_relative_path("progress.json"))
                 self.add_log("Начинаю сначала...")
 
+        # if self.env.UPDATE_PLAYLIST:
+        #     # Ask user to input link to existing VK playlist
+        #     playlist_url = self.show_input_dialog('Ссылка на плейлист',
+        #                                           'Вставьте ссылку на существующий плейлист в VK, чтобы обновить его.')
+        #     if playlist_url is None:
+        #         self.stop_import()
+        #         self.add_log("Отменено пользователем...")
+        #         return
+        #     playlist_url = playlist_url.strip()
+        #     parsed_url = urlparse(playlist_url)
+        #     if parsed_url.scheme != 'https' or \
+        #             parsed_url.netloc != 'vk.com' or \
+        #             not (parsed_url.path.startswith('/audios') or parsed_url.path.startswith('/music')):
+        #         self.add_log("Некорректная ссылка на плейлист, пропускаю этот этап...")
+        #     else:
+        #         playlist_id = ''
+        #         # https://vk.com/audios95755136?section=all&z=audio_playlist95755136_77191690 -> 77191690
+        #         if parsed_url.path.startswith('/audios'):
+        #             playlist_id = parse_qs(parsed_url.query)['z'][0].split('_')[-1]
+        #         # https://vk.com/music/playlist/95755136_77191690_501288fa2e11eed984 -> 77191690
+        #         elif parsed_url.path.startswith('/music'):
+        #             playlist_id = parsed_url.path.split('/')[-1].split('_')[1]
+        #
+        #         try:
+        #             assert playlist_id.isdigit(), "Некорректная ссылка на плейлист (id not int), пропускаю этот этап..."
+        #             self.playlist_response = vk_session.method("audio.getPlaylistById", {
+        #                 "owner_id": user_info['id'],
+        #                 "playlist_id": int(playlist_id),
+        #             })
+        #         except (vk_api.VkApiError, AssertionError) as e:
+        #             self.add_log(
+        #                 f"Не получается получить информацию о плейлисте, ошибка: \"{e}\". Останавливаю импорт...")
+        #             self.stop_import()
+        #         else:
+        #             self.add_log(f"Получил базовую информацию о плейлисте \"{self.playlist_response['title']}\"")
+        #             title_playlist = self.playlist_response['title']
+        #             count = self.playlist_response['count']
+        #             # playlist_img = self.playlist_response['photo']['photo_600']
+        #             is_continue = True
+        #
+        #             # Getting playlist tracks by HTML parsing
+        #             parsed_tracklist = []
+        #             try:
+        #                 raw_response = requests.get(f"https://m.vk.com/music/playlist/{user_info['id']}_{playlist_id}", impersonate="chrome101")
+        #                 soup = BeautifulSoup(raw_response.text, 'lxml')
+        #                 for track in soup.find_all('div', {'class': 'audio_row__inner'}):
+        #                     artist = track.find('div', {'class': 'audio_row__performers'}).text
+        #                     title = track.find('div', {'class': 'audio_row__title_inner'}).text
+        #                     parsed_tracklist.append((artist, title,))
+        #             except Exception as e:
+        #                 self.add_log(f"Не получается получить содержимое плейлиста в VK (он точно публичный?), ошибка: \"{e}\".\n"
+        #                              f"Возможно, метод парсинга устарел. Останавливаю импорт...")
+        #                 self.stop_import()
+        #
+        #             if len(parsed_tracklist) != count:
+        #                 self.add_log(f"Количество спарсенных треков в плейлисте не совпадает с данными VK API ({len(parsed_tracklist)} != {count}). Останавливаю импорт...")
+        #                 self.stop_import()
+        #
+        #             # Удаляем треки из tracklist, которые уже добавлены до последнего трека в плейлисте (parsed_tracklist)
+        #             last_track = parsed_tracklist[-1]
+        #             for i, track in enumerate(tracklist):
+        #                 if fuzz.ratio(track[0], last_track[0]) > 80 and fuzz.ratio(track[1], last_track[1]) > 80:
+        #                     self.add_log(f"Нашел последний добавленный трек в плейлисте: \"{track[0]} - {track[1]}\" (номер {i + 1} в импортируемом треклисте)")
+        #                     tracklist = tracklist[i + 1:]
+        #                     break
+
+
         self.ok_tracks = []
         self.questionable_tracks = []
         failed_tracks = []
@@ -340,7 +429,7 @@ class MainTab(QWidget, MainEnv):
                     try:
                         response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
                     except vk_api.VkApiError as e:
-                        self.add_log(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд...")
+                        self.add_log(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд (программа может зависнуть)...")
                         sleep(self.env.TIMEOUT_AFTER_ERROR)
                         response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
                     if 'items' not in response:
@@ -392,7 +481,7 @@ class MainTab(QWidget, MainEnv):
                         "audio_ids": audio_ids,
                     })
                 except vk_api.VkApiError as e:
-                    self.add_log(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд...")
+                    self.add_log(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд (программа может зависнуть)...")
                     sleep(self.env.TIMEOUT_AFTER_ERROR)
                     delayed_response = None
                     try:
@@ -432,7 +521,9 @@ class MainTab(QWidget, MainEnv):
                 else:
                     self.add_log(f"Успешно добавил в плейлист: \"{track_info['artist']} - {track_info['title']}\"")
                 added_count += 1
-                sleep(self.env.TIMEOUT_AFTER_SUCCESS)
+                if self.env.TIMEOUT_AFTER_SUCCESS > 0:
+                    self.add_log(f"Жду {self.env.TIMEOUT_AFTER_SUCCESS} секунд (программа может зависнуть)...")
+                    sleep(self.env.TIMEOUT_AFTER_SUCCESS)
                 self.is_under_ban = False
 
         if len(tracklist) != added_count:
@@ -506,7 +597,8 @@ class MainTab(QWidget, MainEnv):
         # if platform.system() == "Windows":
         #     webbrowser.open(fix_relative_path(report_filename))
 
-    def show_success_dialog(self, title: str, playlists_urls: List[str], report_filename, playlistImageUrl: Optional[str] = None):
+    def show_success_dialog(self, title: str, playlists_urls: List[str], report_filename,
+                            playlistImageUrl: Optional[str] = None):
         """
         Показывает диалог успешного завершения импорта плейлиста: ссылки на плейлисты и обложку с кнопкой скачивания (если есть).
         А еще тут есть кнопка "просмотреть отчет"
@@ -516,7 +608,8 @@ class MainTab(QWidget, MainEnv):
         dialog.setWindowModality(Qt.ApplicationModal)
         dialog.resize(400, 200)
         layout = QVBoxLayout()
-        layout.addWidget(QLabel("<b>Импорт завершен! Импорт плейлиста(ов) завершен:</b>"))
+        layout.addWidget(QLabel(
+            "<b>Импорт завершен!:</b>\nТреки успешно импортированы, посмотрите отчет или скачайте обложку плейлиста."))
         for playlist_url in playlists_urls:
             playlist_url_label = QLabel(f'<a href="{playlist_url}">{playlist_url}</a>')
             playlist_url_label.setOpenExternalLinks(True)
@@ -538,7 +631,7 @@ class MainTab(QWidget, MainEnv):
             playlist_image_label.setScaledContents(True)
             playlist_image_label.setFixedWidth(200)
             playlist_image_label.setFixedHeight(200)
-            layout.addWidget(playlist_image_label)
+            layout.addWidget(playlist_image_label, alignment=Qt.AlignCenter)
             download_image_button = QPushButton("Скачать обложку")
             download_image_button.clicked.connect(lambda: self.download_image(playlist_image_response.content))
             layout.addWidget(download_image_button)
@@ -616,9 +709,10 @@ class MainTab(QWidget, MainEnv):
                 sys.exit(1)
         elapsed_time = datetime.now() - start_time
         self.add_log(f"Капча решена за {elapsed_time.microseconds * 0.001}мс")
-        # self.add_log(f"Чтобы VK не ругался, жду {self.env.TIMEOUT_AFTER_CAPTCHA} сек...")
-        # self.add_log(f"(Программа может подвиснуть на {self.env.TIMEOUT_AFTER_CAPTCHA} секунд)")
-        # sleep(self.env.TIMEOUT_AFTER_CAPTCHA)
+        if self.env.TIMEOUT_AFTER_CAPTCHA > 0:
+            self.add_log(f"Чтобы VK не ругался, жду {self.env.TIMEOUT_AFTER_CAPTCHA} сек...")
+            self.add_log(f"(Программа может подвиснуть на {self.env.TIMEOUT_AFTER_CAPTCHA} секунд)")
+            sleep(self.env.TIMEOUT_AFTER_CAPTCHA)
         self.add_log("Отправляю решение капчи...")
         return captcha.try_again(key)
 
@@ -632,14 +726,15 @@ class SettingsTab(QWidget, MainEnv):
         # Creating a form layout for the tab
         self.layout = QFormLayout()
         # Creating radio buttons for the mode selection
-        self.tracklist_mode = QRadioButton("Треклиста")
-        self.spotify_mode = QRadioButton("Spotify")
-        self.apple_mode = QRadioButton("Apple Music")
-        self.vk_links_mode = QRadioButton("Списка ссылок на треки")
+        self.tracklist_mode = QRadioButton("Треклист (tracklist.txt)")
+        self.spotify_mode = QRadioButton("Плейлист Spotify")
+        self.apple_mode = QRadioButton("Плейлист из Apple Music")
+        self.vk_links_mode = QRadioButton("Список ссылок на треки в VK")
         self.reverse = QCheckBox()
         self.strict_search = QCheckBox()
         self.add_to_library = QCheckBox()
         self.bypass_captcha = QCheckBox()
+        #self.update_playlist = QCheckBox()
         # Creating line edits for the string and integer environment variables
         self.vk_token = QLineEdit()
         self.vk_token.setPlaceholderText("Чтобы заново войти в VK, нажмите кнопку справа")
@@ -656,40 +751,100 @@ class SettingsTab(QWidget, MainEnv):
         self.reverse.setChecked(self.env.REVERSE)
         self.strict_search.setChecked(self.env.STRICT_SEARCH)
         self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
+        #self.update_playlist.setChecked(self.env.UPDATE_PLAYLIST)
         self.vk_token.setText(self.env.VK_TOKEN)
         self.timeout_after_error.setText(str(self.env.TIMEOUT_AFTER_ERROR))
         self.timeout_after_captcha.setText(str(self.env.TIMEOUT_AFTER_CAPTCHA))
         self.timeout_after_success.setText(str(self.env.TIMEOUT_AFTER_SUCCESS))
+        # Adding help tooltips to the widgets
+        self.tracklist_mode.setToolTip("Импортировать треки из файла tracklist.txt")
+        self.spotify_mode.setToolTip("Импортировать треки из плейлиста Spotify (SPOTIFY_MODE)")
+        self.apple_mode.setToolTip("Импортировать треки из экспортированного CSV-плейлиста Apple Music (APPLE_MODE)")
+        self.vk_links_mode.setToolTip("Импортировать треки из списка ссылок на треки в VK Музыке (VK_LINKS_MODE)")
+        self.bypass_captcha.setToolTip(
+            "Автоматически решать капчу, если выключена, ответ придётся вводить вручную (BYPASS_CAPTCHA)")
+        self.reverse.setToolTip(
+            "Добавлять треки в обратном порядке - подходит по-умолчанию для плейлистов Spotify (REVERSE)")
+        self.strict_search.setToolTip(
+            "Искать только точные совпадения, если выключено может добавить ремикс или 'перезалив' оригинальной композиции (STRICT_SEARCH)")
+        self.add_to_library.setToolTip("Добавлять треки в Мои Аудиозаписи (ADD_TO_LIBRARY)")
+        #self.update_playlist.setToolTip("Обновлять плейлист, если он уже существует (UPDATE_PLAYLIST)")
+        self.vk_token.setToolTip("Токен VK API, через него утилита получает доступ к вашим аудиозаписям (VK_TOKEN)")
+        self.timeout_after_error.setToolTip("Задержка после ошибки, сек (TIMEOUT_AFTER_ERROR)")
+        self.timeout_after_captcha.setToolTip("Задержка после капчи, сек (TIMEOUT_AFTER_CAPTCHA)")
+        self.timeout_after_success.setToolTip(
+            "Задержка после успешного добавления аудиозаписи, сек (TIMEOUT_AFTER_SUCCESS)")
         # Adding the widgets and their labels to the form layout
-        self.layout.addRow("Импортировать из:", self.tracklist_mode)
+        self.layout.addRow("Откуда импортировать:", self.tracklist_mode)
         self.layout.addRow("", self.spotify_mode)
         self.layout.addRow("", self.apple_mode)
         self.layout.addRow("", self.vk_links_mode)
         self.layout.addRow("Автоматический обход капчи", self.bypass_captcha)
-        self.layout.addRow("Импорт в обратном порядке", self.reverse)
+        self.layout.addRow("В обратном порядке", self.reverse)
         self.layout.addRow("Только точные совпадения", self.strict_search)
         self.layout.addRow("Добавлять в Мои Аудиозаписи", self.add_to_library)
+        #self.layout.addRow("Обновлять существующий плейлист", self.update_playlist)
         # VK Token + refresh button
         self.vk_token_layout = QHBoxLayout()
         self.vk_token_layout.addWidget(self.vk_token)
-        self.vk_token_refresh_button = QPushButton("Обновить")
+        self.vk_token_refresh_button = QPushButton("Авторизоваться заново" if self.env.VK_TOKEN else 'Авторизоваться')
         self.vk_token_refresh_button.clicked.connect(self.get_token)
         self.vk_token_layout.addWidget(self.vk_token_refresh_button)
-        self.layout.addRow("VK токен", self.vk_token_layout)
-
-        self.layout.addRow("Задержка после ошибк, сек", self.timeout_after_error)
-        self.layout.addRow("Задержка после капч, сек", self.timeout_after_captcha)
-        self.layout.addRow("Задержка между запросами, сек", self.timeout_after_success)
-        # Add help tooltip to the VK token line edit
-        self.vk_token.setToolTip("Click the button below to get the VK token")
-        # Creating a save button
+        self.layout.addRow("VK-токен", self.vk_token_layout)
+        self.layout.addRow("Задержка после ошибок, сек", self.timeout_after_error)
+        self.layout.addRow("Задержка после капчи, сек", self.timeout_after_captcha)
+        self.layout.addRow("Задержка после успеха, сек", self.timeout_after_success)
+        # Creating save and reset button
         self.save_button = QPushButton("Сохранить настройки")
-        # Connecting the save button to a function that updates the environment variables
+        self.reset_button = QPushButton("Сбросить настройки")
+        self.save_button.setStyleSheet("QPushButton {font-weight: bold; margin-top: 10px;}")
+        self.save_button.setFixedHeight(40)
+        # Connecting save and reset button to a function that updates the environment variables
         self.save_button.clicked.connect(self.save_envs)
-        # Adding the save button to the form layout
+        self.reset_button.clicked.connect(self.reset_envs)
+        # Adding save and reset button to the form layout
         self.layout.addRow(self.save_button)
+        self.layout.addRow(self.reset_button)
         # Setting the layout for the tab
         self.setLayout(self.layout)
+
+    def reset_envs(self):
+        # Ask user to confirm reset
+        reply = QMessageBox.question(self, 'Подтверждение',
+                                     'Вы уверены, что хотите сбросить настройки?',
+                                     QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
+        if reply == QMessageBox.No:
+            return
+        # Setting the environment variables using the set_key function
+        set_key("config.env", "BYPASS_CAPTCHA", "1")
+        set_key("config.env", "SPOTIFY_MODE", "1")
+        set_key("config.env", "APPLE_MODE", "0")
+        set_key("config.env", "VK_LINKS_MODE", "0")
+        set_key("config.env", "REVERSE", "1")
+        set_key("config.env", "STRICT_SEARCH", "0")
+        set_key("config.env", "ADD_TO_LIBRARY", "1")
+        set_key("config.env", "VK_TOKEN", "")
+        set_key("config.env", "TIMEOUT_AFTER_ERROR", "1")
+        set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", "0")
+        set_key("config.env", "TIMEOUT_AFTER_SUCCESS", "0")
+        #set_key("config.env", "UPDATE_PLAYLIST", "0")
+        # Reloading the config.env file
+        self.load_env_config()
+        # Setting the initial values of the widgets from the environment variables
+        self.tracklist_mode.setChecked(
+            not self.env.SPOTIFY_MODE and not self.env.APPLE_MODE and not self.env.VK_LINKS_MODE)
+        self.spotify_mode.setChecked(self.env.SPOTIFY_MODE)
+        self.apple_mode.setChecked(self.env.APPLE_MODE)
+        self.vk_links_mode.setChecked(self.env.VK_LINKS_MODE)
+        self.bypass_captcha.setChecked(self.env.BYPASS_CAPTCHA)
+        self.reverse.setChecked(self.env.REVERSE)
+        self.strict_search.setChecked(self.env.STRICT_SEARCH)
+        self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
+        self.vk_token.setText(self.env.VK_TOKEN)
+        self.timeout_after_error.setText(str(self.env.TIMEOUT_AFTER_ERROR))
+        self.timeout_after_captcha.setText(str(self.env.TIMEOUT_AFTER_CAPTCHA))
+        self.timeout_after_success.setText(str(self.env.TIMEOUT_AFTER_SUCCESS))
+        # self.add_log("Настройки сброшены")
 
     # Defining a function that updates the environment variables
     def save_envs(self):
@@ -701,6 +856,7 @@ class SettingsTab(QWidget, MainEnv):
         reverse = "1" if self.reverse.isChecked() else "0"
         strict_search = "1" if self.strict_search.isChecked() else "0"
         add_to_library = "1" if self.add_to_library.isChecked() else "0"
+        #update_playlist = "1" if self.update_playlist.isChecked() else "0"
         # If tracklist mode is selected, set all the other modes to 0
         if self.tracklist_mode.isChecked():
             spotify_mode = "0"
@@ -720,6 +876,7 @@ class SettingsTab(QWidget, MainEnv):
         set_key("config.env", "STRICT_SEARCH", strict_search)
         set_key("config.env", "ADD_TO_LIBRARY", add_to_library)
         set_key("config.env", "VK_TOKEN", vk_token)
+        #set_key("config.env", "UPDATE_PLAYLIST", update_playlist)
         set_key("config.env", "TIMEOUT_AFTER_ERROR", timeout_after_error)
         set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", timeout_after_captcha)
         set_key("config.env", "TIMEOUT_AFTER_SUCCESS", timeout_after_success)
@@ -743,12 +900,12 @@ class SettingsTab(QWidget, MainEnv):
 
         # Add open link button
         open_link_button = QPushButton(self.token_dialog)
-        open_link_button.setText('Open VK Authorization Link')
+        open_link_button.setText('Открыть ссылку для атворизации')
         layout.addWidget(open_link_button)
 
         # Add copy link button
         copy_link_button = QPushButton(self.token_dialog)
-        copy_link_button.setText('Copy VK Authorization Link')
+        copy_link_button.setText('Скопировать ссылку в буфер обмена')
         layout.addWidget(copy_link_button)
 
         # Connect open link button clicked event
