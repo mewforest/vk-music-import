@@ -34,6 +34,8 @@ from PySide2.QtCore import Qt, QUrl
 from PySide2.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton, QApplication
 from PySide2.QtGui import QPixmap, QImage
 from PySide2.QtCore import Qt
+
+
 # from curl_cffi import requests
 # from bs4 import BeautifulSoup
 # from fuzzywuzzy import fuzz
@@ -70,7 +72,7 @@ class MainEnv:
         self.env.REVERSE = os.getenv("REVERSE", "0") == "1"
         self.env.STRICT_SEARCH = os.getenv("STRICT_SEARCH", "0") == "1"
         self.env.ADD_TO_LIBRARY = os.getenv("ADD_TO_LIBRARY", "0") == "1"
-        #self.env.UPDATE_PLAYLIST = os.getenv("UPDATE_PLAYLIST", "0") == "1"
+        # self.env.UPDATE_PLAYLIST = os.getenv("UPDATE_PLAYLIST", "0") == "1"
         self.env.TIMEOUT_AFTER_ERROR = int(os.getenv("TIMEOUT_AFTER_ERROR", "10"))
         self.env.TIMEOUT_AFTER_CAPTCHA = int(os.getenv("TIMEOUT_AFTER_CAPTCHA", "10"))
         self.env.TIMEOUT_AFTER_SUCCESS = int(os.getenv("TIMEOUT_AFTER_SUCCESS", "10"))
@@ -391,7 +393,6 @@ class MainTab(QWidget, MainEnv):
         #                     tracklist = tracklist[i + 1:]
         #                     break
 
-
         self.ok_tracks = []
         self.questionable_tracks = []
         failed_tracks = []
@@ -481,7 +482,8 @@ class MainTab(QWidget, MainEnv):
                         "audio_ids": audio_ids,
                     })
                 except vk_api.VkApiError as e:
-                    self.add_log(f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд (программа может зависнуть)...")
+                    self.add_log(
+                        f"Не получается добавить трек в плейлист, ошибка: \"{e}\". Жду 10 секунд (программа может зависнуть)...")
                     sleep(self.env.TIMEOUT_AFTER_ERROR)
                     delayed_response = None
                     try:
@@ -734,7 +736,7 @@ class SettingsTab(QWidget, MainEnv):
         self.strict_search = QCheckBox()
         self.add_to_library = QCheckBox()
         self.bypass_captcha = QCheckBox()
-        #self.update_playlist = QCheckBox()
+        # self.update_playlist = QCheckBox()
         # Creating line edits for the string and integer environment variables
         self.vk_token = QLineEdit()
         self.vk_token.setPlaceholderText("Чтобы заново войти в VK, нажмите кнопку справа")
@@ -751,7 +753,7 @@ class SettingsTab(QWidget, MainEnv):
         self.reverse.setChecked(self.env.REVERSE)
         self.strict_search.setChecked(self.env.STRICT_SEARCH)
         self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
-        #self.update_playlist.setChecked(self.env.UPDATE_PLAYLIST)
+        # self.update_playlist.setChecked(self.env.UPDATE_PLAYLIST)
         self.vk_token.setText(self.env.VK_TOKEN)
         self.timeout_after_error.setText(str(self.env.TIMEOUT_AFTER_ERROR))
         self.timeout_after_captcha.setText(str(self.env.TIMEOUT_AFTER_CAPTCHA))
@@ -768,7 +770,7 @@ class SettingsTab(QWidget, MainEnv):
         self.strict_search.setToolTip(
             "Искать только точные совпадения, если выключено может добавить ремикс или 'перезалив' оригинальной композиции (STRICT_SEARCH)")
         self.add_to_library.setToolTip("Добавлять треки в Мои Аудиозаписи (ADD_TO_LIBRARY)")
-        #self.update_playlist.setToolTip("Обновлять плейлист, если он уже существует (UPDATE_PLAYLIST)")
+        # self.update_playlist.setToolTip("Обновлять плейлист, если он уже существует (UPDATE_PLAYLIST)")
         self.vk_token.setToolTip("Токен VK API, через него утилита получает доступ к вашим аудиозаписям (VK_TOKEN)")
         self.timeout_after_error.setToolTip("Задержка после ошибки, сек (TIMEOUT_AFTER_ERROR)")
         self.timeout_after_captcha.setToolTip("Задержка после капчи, сек (TIMEOUT_AFTER_CAPTCHA)")
@@ -783,7 +785,7 @@ class SettingsTab(QWidget, MainEnv):
         self.layout.addRow("В обратном порядке", self.reverse)
         self.layout.addRow("Только точные совпадения", self.strict_search)
         self.layout.addRow("Добавлять в Мои Аудиозаписи", self.add_to_library)
-        #self.layout.addRow("Обновлять существующий плейлист", self.update_playlist)
+        # self.layout.addRow("Обновлять существующий плейлист", self.update_playlist)
         # VK Token + refresh button
         self.vk_token_layout = QHBoxLayout()
         self.vk_token_layout.addWidget(self.vk_token)
@@ -827,7 +829,7 @@ class SettingsTab(QWidget, MainEnv):
         set_key("config.env", "TIMEOUT_AFTER_ERROR", "1")
         set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", "0")
         set_key("config.env", "TIMEOUT_AFTER_SUCCESS", "0")
-        #set_key("config.env", "UPDATE_PLAYLIST", "0")
+        # set_key("config.env", "UPDATE_PLAYLIST", "0")
         # Reloading the config.env file
         self.load_env_config()
         # Setting the initial values of the widgets from the environment variables
@@ -856,7 +858,7 @@ class SettingsTab(QWidget, MainEnv):
         reverse = "1" if self.reverse.isChecked() else "0"
         strict_search = "1" if self.strict_search.isChecked() else "0"
         add_to_library = "1" if self.add_to_library.isChecked() else "0"
-        #update_playlist = "1" if self.update_playlist.isChecked() else "0"
+        # update_playlist = "1" if self.update_playlist.isChecked() else "0"
         # If tracklist mode is selected, set all the other modes to 0
         if self.tracklist_mode.isChecked():
             spotify_mode = "0"
@@ -876,7 +878,7 @@ class SettingsTab(QWidget, MainEnv):
         set_key("config.env", "STRICT_SEARCH", strict_search)
         set_key("config.env", "ADD_TO_LIBRARY", add_to_library)
         set_key("config.env", "VK_TOKEN", vk_token)
-        #set_key("config.env", "UPDATE_PLAYLIST", update_playlist)
+        # set_key("config.env", "UPDATE_PLAYLIST", update_playlist)
         set_key("config.env", "TIMEOUT_AFTER_ERROR", timeout_after_error)
         set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", timeout_after_captcha)
         set_key("config.env", "TIMEOUT_AFTER_SUCCESS", timeout_after_success)
@@ -886,21 +888,20 @@ class SettingsTab(QWidget, MainEnv):
     def get_token(self):
         self.token_dialog = QDialog()
         self.token_dialog.setWindowTitle('Необходимо авторизоваться во ВКонтакте')
-        self.token_dialog.setFixedSize(400, 300)
+        self.token_dialog.setFixedSize(500, 300)
 
         layout = QVBoxLayout()
 
         # Add instructions label
         instructions_label = QLabel(self.token_dialog)
-        instructions_label.setText("""
-1. Перейди по ссылке ниже и нажми "Разрешить" (если необходимо, авторизуйся в ВКонтакте)
-2. Скопируй ссылку из адресной строки браузера и вставь её в поле ниже
-        """.strip())
+        instructions_label.setText(
+            "1. Перейди по ссылке ниже и нажми 'Разрешить'\n"
+            "2. Скопируй ссылку из адресной строки браузера и вставь её в поле ниже.".strip())
         layout.addWidget(instructions_label)
 
         # Add open link button
         open_link_button = QPushButton(self.token_dialog)
-        open_link_button.setText('Открыть ссылку для атворизации')
+        open_link_button.setText('Открыть ссылку для авторизации')
         layout.addWidget(open_link_button)
 
         # Add copy link button
