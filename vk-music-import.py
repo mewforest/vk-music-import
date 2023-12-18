@@ -205,7 +205,7 @@ class MainTab(QWidget, MainEnv):
             #                              QMessageBox.Yes | QMessageBox.No, QMessageBox.No)
             # if reply == QMessageBox.Yes:
             #     self.tab_widget.setCurrentIndex(1)
-            # return
+            return
 
             # self.get_token()
             # user_info = vk.users.get()[0]
@@ -893,8 +893,8 @@ class SettingsTab(QWidget, MainEnv):
         # Add instructions label
         instructions_label = QLabel(self.token_dialog)
         instructions_label.setText("""
-        1) Перейди по ссылке ниже и нажми "Разрешить" (если необходимо, авторизуйся в ВКонтакте)
-        2) Скопируй ссылку из адресной строки браузера и вставь её в поле ниже
+1. Перейди по ссылке ниже и нажми "Разрешить" (если необходимо, авторизуйся в ВКонтакте)
+2. Скопируй ссылку из адресной строки браузера и вставь её в поле ниже
         """.strip())
         layout.addWidget(instructions_label)
 
