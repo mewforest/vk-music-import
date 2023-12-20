@@ -7,6 +7,7 @@ https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=http
 """
 import csv
 import json
+import logging
 import os
 import platform
 import re
@@ -14,6 +15,7 @@ import sys
 import webbrowser
 from datetime import datetime
 from io import BytesIO
+from logging.handlers import RotatingFileHandler
 from time import sleep
 from types import SimpleNamespace
 from urllib.parse import urlparse, parse_qs
@@ -40,7 +42,6 @@ from PySide2.QtCore import Qt
 # from bs4 import BeautifulSoup
 # from fuzzywuzzy import fuzz
 
-
 def fix_relative_path(relative_path: str) -> str:
     """
     Фикс относительных путей PyInstaller
@@ -62,7 +63,7 @@ class MainEnv:
     def load_env_config(self):
         self.env = SimpleNamespace()
 
-        load_dotenv(fix_relative_path('config.env'))
+        load_dotenv(config_path, override=True)
 
         self.env.BYPASS_CAPTCHA = os.getenv("BYPASS_CAPTCHA", "0") == "1"
         self.env.VK_TOKEN = os.getenv("VK_TOKEN")
@@ -111,6 +112,7 @@ class MainTab(QWidget, MainEnv):
         self.env = SimpleNamespace()
         # Creating buttons (start, pause, stop)
         self.start_button = QPushButton("Начать импорт")
+        self.start_button.setStyleSheet("QPushButton {font-weight: bold; height: 24px}")
         # Connecting the buttons to their functions
         self.start_button.clicked.connect(self.start)
         # Creating a progress bar
@@ -145,11 +147,15 @@ class MainTab(QWidget, MainEnv):
         self.progress_bar.setValue(value)
         QApplication.processEvents()
 
-    def add_log(self, text: str):
+    def add_log(self, text: str, level: str = 'INFO'):
         """
         Добавляет текст в лог
         """
         self.text_edit.append(text)
+        if level == 'INFO':
+            logging.info(text)
+        else:
+            logging.warning(text)
         QApplication.processEvents()
 
     def show_input_dialog(self, title: str, text: str, default_text: str = "") -> str:
@@ -165,6 +171,7 @@ class MainTab(QWidget, MainEnv):
     # Defining a function that starts the import process
     def start(self):
         self.load_env_config()
+
         if self.is_running:
             # Ask user is he sure to stop
             reply = QMessageBox.question(self, 'Подтверждение', 'Вы уверены, что хотите остановить импорт?',
@@ -182,7 +189,7 @@ class MainTab(QWidget, MainEnv):
         # VK Authentication
         self.add_log("Авторизуюсь в ВКонтакте...")
         if self.env.VK_TOKEN is None:
-            self.add_log("Не обнаружен токен VK API в config.env файле, запрашиваю авторизацию вручную...")
+            self.add_log("Не обнаружен токен VK API в config_path файле, запрашиваю авторизацию вручную...")
             self.get_token()
         vk_session = vk_api.VkApi(token=self.env.VK_TOKEN,
                                   captcha_handler=lambda captcha: self.captcha_handler(captcha))
@@ -211,7 +218,7 @@ class MainTab(QWidget, MainEnv):
 
             # self.get_token()
             # user_info = vk.users.get()[0]
-            # self.add_log("Токен в файле config.env успешно сброшен")
+            # self.add_log("Токен в файле config_path успешно сброшен")
         title_playlist = f"Импортированная музыка от {datetime.now().strftime('%d.%m.%Y %H:%M')}"
         report_filename = f"Отчет об импорте за {datetime.now().strftime('%d.%m.%Y %H-%M')}.txt"
         playlist_img = None
@@ -611,31 +618,35 @@ class MainTab(QWidget, MainEnv):
         dialog.resize(400, 200)
         layout = QVBoxLayout()
         layout.addWidget(QLabel(
-            "<b>Импорт завершен!:</b>\nТреки успешно импортированы, посмотрите отчет или скачайте обложку плейлиста."))
+            "<b>Импорт завершен!</b>\n\n"
+            "Треки успешно импортированы, посмотрите отчет или скачайте обложку плейлиста."))
         for playlist_url in playlists_urls:
             playlist_url_label = QLabel(f'<a href="{playlist_url}">{playlist_url}</a>')
             playlist_url_label.setOpenExternalLinks(True)
             layout.addWidget(playlist_url_label)
-        if platform.system() == "Windows":
-            show_report_button = QPushButton("Просмотреть отчет")
-            show_report_button.clicked.connect(
-                lambda: webbrowser.open(fix_relative_path(report_filename)))
-            layout.addWidget(show_report_button)
 
-        # Playlist images
+        # Playlist image
         if playlistImageUrl is not None:
             playlist_image_response = requests.get(playlistImageUrl)
             playlist_image = QImage()
             playlist_image.loadFromData(playlist_image_response.content)
             playlist_image_label = QLabel()
-            playlist_image_label.setPixmap(QPixmap.fromImage(playlist_image))
-            # Set image width
-            playlist_image_label.setScaledContents(True)
-            playlist_image_label.setFixedWidth(200)
-            playlist_image_label.setFixedHeight(200)
+            playlist_image_pixmap = QPixmap.fromImage(playlist_image).scaled(200, 200,
+                                                                             aspectRatioMode=Qt.KeepAspectRatio)
+            playlist_image_label.setPixmap(playlist_image_pixmap)
             layout.addWidget(playlist_image_label, alignment=Qt.AlignCenter)
             download_image_button = QPushButton("Скачать обложку")
             download_image_button.clicked.connect(lambda: self.download_image(playlist_image_response.content))
+
+        if platform.system() == "Windows":
+            show_report_button = QPushButton("Просмотреть отчет")
+            show_report_button.setStyleSheet("QPushButton {font-weight: bold; margin-top: 10px;}")
+            show_report_button.setFixedHeight(40)
+            show_report_button.clicked.connect(
+                lambda: webbrowser.open(fix_relative_path(report_filename)))
+            layout.addWidget(show_report_button)
+
+        if playlistImageUrl is not None:
             layout.addWidget(download_image_button)
         dialog.setLayout(layout)
         dialog.exec_()
@@ -739,7 +750,7 @@ class SettingsTab(QWidget, MainEnv):
         # self.update_playlist = QCheckBox()
         # Creating line edits for the string and integer environment variables
         self.vk_token = QLineEdit()
-        self.vk_token.setPlaceholderText("Чтобы заново войти в VK, нажмите кнопку справа")
+        self.vk_token.setPlaceholderText("Нажмите \"Авторизоваться\", чтобы войти в VK")
         self.timeout_after_error = QLineEdit()
         self.timeout_after_captcha = QLineEdit()
         self.timeout_after_success = QLineEdit()
@@ -777,6 +788,13 @@ class SettingsTab(QWidget, MainEnv):
         self.timeout_after_success.setToolTip(
             "Задержка после успешного добавления аудиозаписи, сек (TIMEOUT_AFTER_SUCCESS)")
         # Adding the widgets and their labels to the form layout
+        # VK Token + refresh button
+        self.vk_token_layout = QHBoxLayout()
+        self.vk_token_layout.addWidget(self.vk_token)
+        self.vk_token_refresh_button = QPushButton("Авторизоваться заново" if self.env.VK_TOKEN else 'Авторизоваться')
+        self.vk_token_refresh_button.clicked.connect(self.get_token)
+        self.vk_token_layout.addWidget(self.vk_token_refresh_button)
+        self.layout.addRow("Токен от ВКонтакте", self.vk_token_layout)
         self.layout.addRow("Откуда импортировать:", self.tracklist_mode)
         self.layout.addRow("", self.spotify_mode)
         self.layout.addRow("", self.apple_mode)
@@ -786,13 +804,6 @@ class SettingsTab(QWidget, MainEnv):
         self.layout.addRow("Только точные совпадения", self.strict_search)
         self.layout.addRow("Добавлять в Мои Аудиозаписи", self.add_to_library)
         # self.layout.addRow("Обновлять существующий плейлист", self.update_playlist)
-        # VK Token + refresh button
-        self.vk_token_layout = QHBoxLayout()
-        self.vk_token_layout.addWidget(self.vk_token)
-        self.vk_token_refresh_button = QPushButton("Авторизоваться заново" if self.env.VK_TOKEN else 'Авторизоваться')
-        self.vk_token_refresh_button.clicked.connect(self.get_token)
-        self.vk_token_layout.addWidget(self.vk_token_refresh_button)
-        self.layout.addRow("VK-токен", self.vk_token_layout)
         self.layout.addRow("Задержка после ошибок, сек", self.timeout_after_error)
         self.layout.addRow("Задержка после капчи, сек", self.timeout_after_captcha)
         self.layout.addRow("Задержка после успеха, сек", self.timeout_after_success)
@@ -818,19 +829,19 @@ class SettingsTab(QWidget, MainEnv):
         if reply == QMessageBox.No:
             return
         # Setting the environment variables using the set_key function
-        set_key("config.env", "BYPASS_CAPTCHA", "1")
-        set_key("config.env", "SPOTIFY_MODE", "1")
-        set_key("config.env", "APPLE_MODE", "0")
-        set_key("config.env", "VK_LINKS_MODE", "0")
-        set_key("config.env", "REVERSE", "1")
-        set_key("config.env", "STRICT_SEARCH", "0")
-        set_key("config.env", "ADD_TO_LIBRARY", "1")
-        set_key("config.env", "VK_TOKEN", "")
-        set_key("config.env", "TIMEOUT_AFTER_ERROR", "1")
-        set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", "0")
-        set_key("config.env", "TIMEOUT_AFTER_SUCCESS", "0")
-        # set_key("config.env", "UPDATE_PLAYLIST", "0")
-        # Reloading the config.env file
+        set_key(config_path, "BYPASS_CAPTCHA", "1")
+        set_key(config_path, "SPOTIFY_MODE", "1")
+        set_key(config_path, "APPLE_MODE", "0")
+        set_key(config_path, "VK_LINKS_MODE", "0")
+        set_key(config_path, "REVERSE", "1")
+        set_key(config_path, "STRICT_SEARCH", "0")
+        set_key(config_path, "ADD_TO_LIBRARY", "1")
+        set_key(config_path, "VK_TOKEN", "")
+        set_key(config_path, "TIMEOUT_AFTER_ERROR", "1")
+        set_key(config_path, "TIMEOUT_AFTER_CAPTCHA", "0")
+        set_key(config_path, "TIMEOUT_AFTER_SUCCESS", "0")
+        # set_key(config_path, "UPDATE_PLAYLIST", "0")
+        # Reloading the config_path file
         self.load_env_config()
         # Setting the initial values of the widgets from the environment variables
         self.tracklist_mode.setChecked(
@@ -870,25 +881,25 @@ class SettingsTab(QWidget, MainEnv):
         timeout_after_captcha = self.timeout_after_captcha.text()
         timeout_after_success = self.timeout_after_success.text()
         # Setting the environment variables using the set_key function
-        set_key("config.env", "BYPASS_CAPTCHA", bypass_captcha)
-        set_key("config.env", "SPOTIFY_MODE", spotify_mode)
-        set_key("config.env", "APPLE_MODE", apple_mode)
-        set_key("config.env", "VK_LINKS_MODE", vk_links_mode)
-        set_key("config.env", "REVERSE", reverse)
-        set_key("config.env", "STRICT_SEARCH", strict_search)
-        set_key("config.env", "ADD_TO_LIBRARY", add_to_library)
-        set_key("config.env", "VK_TOKEN", vk_token)
-        # set_key("config.env", "UPDATE_PLAYLIST", update_playlist)
-        set_key("config.env", "TIMEOUT_AFTER_ERROR", timeout_after_error)
-        set_key("config.env", "TIMEOUT_AFTER_CAPTCHA", timeout_after_captcha)
-        set_key("config.env", "TIMEOUT_AFTER_SUCCESS", timeout_after_success)
-        # Reloading the config.env file
+        set_key(config_path, "BYPASS_CAPTCHA", bypass_captcha)
+        set_key(config_path, "SPOTIFY_MODE", spotify_mode)
+        set_key(config_path, "APPLE_MODE", apple_mode)
+        set_key(config_path, "VK_LINKS_MODE", vk_links_mode)
+        set_key(config_path, "REVERSE", reverse)
+        set_key(config_path, "STRICT_SEARCH", strict_search)
+        set_key(config_path, "ADD_TO_LIBRARY", add_to_library)
+        set_key(config_path, "VK_TOKEN", vk_token)
+        # set_key(config_path, "UPDATE_PLAYLIST", update_playlist)
+        set_key(config_path, "TIMEOUT_AFTER_ERROR", timeout_after_error)
+        set_key(config_path, "TIMEOUT_AFTER_CAPTCHA", timeout_after_captcha)
+        set_key(config_path, "TIMEOUT_AFTER_SUCCESS", timeout_after_success)
+        # Reloading the config_path file
         self.load_env_config()
 
     def get_token(self):
         self.token_dialog = QDialog()
         self.token_dialog.setWindowTitle('Необходимо авторизоваться во ВКонтакте')
-        self.token_dialog.setFixedSize(500, 300)
+        self.token_dialog.setFixedSize(500, 150)
 
         layout = QVBoxLayout()
 
@@ -896,7 +907,8 @@ class SettingsTab(QWidget, MainEnv):
         instructions_label = QLabel(self.token_dialog)
         instructions_label.setText(
             "1. Перейди по ссылке ниже и нажми 'Разрешить'\n"
-            "2. Скопируй ссылку из адресной строки браузера и вставь её в поле ниже.".strip())
+            "2. Скопируй ссылку из адресной строки браузера и вставь её в следующем\n"
+            "диалоге.".strip())
         layout.addWidget(instructions_label)
 
         # Add open link button
@@ -943,20 +955,20 @@ class SettingsTab(QWidget, MainEnv):
 
     def input_token_url(self):
         """
-        Shows input dialog for token url and saves it to config.env
+        Shows input dialog for token url and saves it to config_path
         """
         self.token_input_dialog = QDialog()
         self.token_input_dialog.setWindowTitle('Вставь ссылку с токеном')
-        self.token_input_dialog.setFixedSize(400, 300)
+        self.token_input_dialog.setFixedSize(400, 150)
 
         layout = QVBoxLayout()
 
         # Add instructions label
         instructions_label = QLabel(self.token_input_dialog)
         instructions_label.setText(
-            "1. Перейди по ссылке ниже и нажми \"Разрешить\"\n"
-            "(если необходимо, авторизуйся в ВКонтакте)\n"
-            "2. Скопируй ссылку из адресной строки браузера и вставь её в поле ниже")
+            "После того, как вы нажмёте \"Разрешить\" откроется пустая\n"
+            "страница, скопируй ссылку на неё из адресной строки\n"
+            "браузера и вставь её в поле ниже:")
         layout.addWidget(instructions_label)
 
         # Add token entry
@@ -965,7 +977,7 @@ class SettingsTab(QWidget, MainEnv):
 
         # Add submit button
         submit_button = QPushButton(self.token_input_dialog)
-        submit_button.setText('Submit')
+        submit_button.setText('Сохранить')
         layout.addWidget(submit_button)
 
         # Connect submit button clicked event
@@ -988,11 +1000,13 @@ class SettingsTab(QWidget, MainEnv):
         # Applying token
         self.token_input_dialog.accept()
         self.env.VK_TOKEN = token_match.group(1)
-        set_key("config.env", "VK_TOKEN", token_match.group(1))
+        set_key(config_path, "VK_TOKEN", token_match.group(1))
         self.load_env_config()
         # Close token dialog
         self.token_input_dialog.close()
         self.token_dialog.close()
+        self.vk_token.setText(token_match.group(1))
+        self.vk_token_refresh_button.setText("Авторизоваться заново" if self.env.VK_TOKEN else 'Авторизоваться')
 
 
 def chunks(lst, n):
@@ -1061,15 +1075,30 @@ def solve_captcha(sid, s, img=None):
 
 
 if __name__ == "__main__":
-    # Creating an application instance
-    app = QApplication(sys.argv)
-    # Apply the complete dark theme to your Qt App.
-    qdarktheme.setup_theme('auto', additional_qss="QToolTip {color: black;}")
-    # Setting the high DPI scaling
-    qdarktheme.enable_hi_dpi()
-    # Creating a main window instance
-    window = MainWindow()
-    # Showing the main window
-    window.show()
-    # Executing the application
-    sys.exit(app.exec_())
+    # Logging formatting
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
+    # Create a RotatingFileHandler with a max size of 10MB
+    file_handler = RotatingFileHandler(fix_relative_path('debug.log'), maxBytes=10 * 1024 * 1024, backupCount=1,
+                                       encoding='utf-8'
+                                       )
+    file_handler.setLevel(logging.DEBUG)
+    # Add the file handler to the root logger
+    logging.getLogger().addHandler(file_handler)
+
+    try:
+        # Config path
+        config_path = fix_relative_path("config.env")
+        # Creating an application instance
+        app = QApplication(sys.argv)
+        # Apply the complete dark theme to your Qt App.
+        qdarktheme.setup_theme('auto', additional_qss="QToolTip {color: black;}")
+        # Setting the high DPI scaling
+        qdarktheme.enable_hi_dpi()
+        # Creating a main window instance
+        window = MainWindow()
+        # Showing the main window
+        window.show()
+        # Executing the application
+        sys.exit(app.exec_())
+    except Exception as e:
+        logging.error(e)
