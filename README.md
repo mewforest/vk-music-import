@@ -180,22 +180,7 @@ Billie Eilish - i love you
 
 ### Слетела конфигурация по умолчанию
 
-Все настройки хранятся в файле `config.env`, если он был удален или повредился, то его можно восстановить вручную, вставив настройки по умолчанию:
-
-```dotenv 
-VK_TOKEN=""
-BYPASS_CAPTCHA="1"
-SPOTIFY_MODE="1"
-APPLE_MODE="0"
-VK_LINKS_MODE="0"
-REVERSE="1"
-STRICT_SEARCH="0"
-ADD_TO_LIBRARY="0"
-TIMEOUT_AFTER_ERROR="10"
-TIMEOUT_AFTER_CAPTCHA="30"
-TIMEOUT_AFTER_SUCCESS="0"
-UPDATE_PLAYLIST="0"
-```
+Все настройки хранятся в файле `config.env`, если он был удален или повредился, то его можно восстановить вручную, вставив настройки по умолчанию из [файла в репозитории](https://github.com/mewforest/vk-music-import/blob/main/config.env).
 
 
 ## Компиляция программы
