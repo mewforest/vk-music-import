@@ -14,6 +14,11 @@
 - Умеет обходить капчу
 
 ---
+## Скриншоты
+
+<img style="float: left; height: 250px" src="https://github.com/mewforest/vk-music-import/assets/15357833/0e0832cf-03a4-44d3-a082-a781458a5a87">
+<img style="float: left; height: 250px" src="https://github.com/mewforest/vk-music-import/assets/15357833/9c06eb70-61f1-440e-83fd-50d3234b73a2">
+<img style="float: left; height: 250px" src="https://github.com/mewforest/vk-music-import/assets/15357833/30db41d3-6886-49c9-a711-9a2b04a44954">
 
 ## Как запустить? (для обычных пользователей)
 
@@ -175,22 +180,7 @@ Billie Eilish - i love you
 
 ### Слетела конфигурация по умолчанию
 
-Все настройки хранятся в файле `config.env`, если он был удален или повредился, то его можно восстановить вручную, вставив настройки по умолчанию:
-
-```dotenv 
-VK_TOKEN=""
-BYPASS_CAPTCHA="1"
-SPOTIFY_MODE="1"
-APPLE_MODE="0"
-VK_LINKS_MODE="0"
-REVERSE="1"
-STRICT_SEARCH="0"
-ADD_TO_LIBRARY="0"
-TIMEOUT_AFTER_ERROR="10"
-TIMEOUT_AFTER_CAPTCHA="30"
-TIMEOUT_AFTER_SUCCESS="0"
-UPDATE_PLAYLIST="0"
-```
+Все настройки хранятся в файле `config.env`, если он был удален или повредился, то его можно восстановить вручную, вставив настройки по умолчанию из [файла в репозитории](https://github.com/mewforest/vk-music-import/blob/main/config.env).
 
 
 ## Компиляция программы
