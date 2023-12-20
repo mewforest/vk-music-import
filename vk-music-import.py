@@ -325,6 +325,8 @@ class MainTab(QWidget, MainEnv):
                 self.playlist_response = progress['playlist_response']
                 is_continue = True
                 self.add_log(f"Продолжаю с {len(self.ok_tracks) + len(self.questionable_tracks)} трека...")
+                # self.update_progress_bar(
+                #     int((len(self.ok_tracks) + len(self.questionable_tracks)) / len(tracklist) * 100))
 
                 # Удаляем треки из tracklist, которые уже добавлены
                 for track in self.ok_tracks + self.questionable_tracks:
@@ -400,8 +402,9 @@ class MainTab(QWidget, MainEnv):
         #                     tracklist = tracklist[i + 1:]
         #                     break
 
-        self.ok_tracks = []
-        self.questionable_tracks = []
+        if not is_continue:
+            self.ok_tracks = []
+            self.questionable_tracks = []
         failed_tracks = []
         added_count = 0
         chucked_rows = list(chunks(tracklist, 1000))
@@ -439,7 +442,13 @@ class MainTab(QWidget, MainEnv):
                     except vk_api.VkApiError as e:
                         self.add_log(f"Не получить трек, ошибка: \"{e}\". Жду 10 секунд (программа может зависнуть)...")
                         sleep(self.env.TIMEOUT_AFTER_ERROR)
-                        response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+                        if self.is_running:
+                            try:
+                                response = vk_session.method("audio.search", {"q": f"{artist} - {title}", "count": 3})
+                            except vk_api.VkApiError as e:
+                                self.add_log(
+                                    f"Не могу найти трек повторно, ошибка: \"{e}\". Пропускаю трек...")
+                                failed_tracks.append(track_row)
                     if 'items' not in response:
                         raise PermissionError(
                             f"VK временно заблокировал доступ к API, повторите позже. Доп. информация: {response}")
@@ -692,7 +701,13 @@ class MainTab(QWidget, MainEnv):
                 self.save_progress_to_file()
                 self.stop_import()
                 self.add_log("Останавливается пользователем...")
-                return captcha.try_again('')
+                # Show user goodbye message
+                QMessageBox.information(self, 'До встречи!',
+                                        'Программа остановлена, но вы можете продолжить импорт позже в любой момент.\n\n'
+                                        'Лучше подождите несколько минут, чтобы ВКонтакте перестал ругаться.')
+                # exit program
+                sys.exit(0)
+                #return captcha.try_again('')
             else:
                 self.add_log("Продолжаю работу, но vk может не захотеть импортировать...")
                 self.is_under_ban = False
@@ -835,7 +850,7 @@ class SettingsTab(QWidget, MainEnv):
         set_key(config_path, "VK_LINKS_MODE", "0")
         set_key(config_path, "REVERSE", "1")
         set_key(config_path, "STRICT_SEARCH", "0")
-        set_key(config_path, "ADD_TO_LIBRARY", "1")
+        set_key(config_path, "ADD_TO_LIBRARY", "0")
         set_key(config_path, "VK_TOKEN", "")
         set_key(config_path, "TIMEOUT_AFTER_ERROR", "1")
         set_key(config_path, "TIMEOUT_AFTER_CAPTCHA", "0")
