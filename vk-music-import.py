@@ -288,7 +288,7 @@ class MainTab(QWidget, MainEnv):
             return
         if use_audio_links:
             for text_line in text_lines:
-                parsed_row = re.match(r"^https://vk\.com/audio(\d+)_(\d+)(?:_([a-z0-9]+))?", text_line)
+                parsed_row = re.match(r"^https://vk\.com/audio(-?\d+)_(\d+)(?:_([a-z0-9]+))?", text_line)
                 if parsed_row is not None and len(parsed_row.groups()) == 3:
                     tracklist.append(parsed_row.groups())
         else:
