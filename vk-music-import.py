@@ -73,6 +73,7 @@ class MainEnv:
         self.env.REVERSE = os.getenv("REVERSE", "0") == "1"
         self.env.STRICT_SEARCH = os.getenv("STRICT_SEARCH", "0") == "1"
         self.env.ADD_TO_LIBRARY = os.getenv("ADD_TO_LIBRARY", "0") == "1"
+        self.env.ADD_TO_GROUP_ID = os.getenv("ADD_TO_GROUP_ID", "")
         # self.env.UPDATE_PLAYLIST = os.getenv("UPDATE_PLAYLIST", "0") == "1"
         self.env.TIMEOUT_AFTER_ERROR = int(os.getenv("TIMEOUT_AFTER_ERROR", "10"))
         self.env.TIMEOUT_AFTER_CAPTCHA = int(os.getenv("TIMEOUT_AFTER_CAPTCHA", "10"))
@@ -84,7 +85,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         # Setting the window title and size
-        self.setWindowTitle("VK Music import (beta)")
+        self.setWindowTitle("VK Music Import (v1.1 beta)")
         self.resize(600, 300)
         # Creating a tab widget
         self.tab_widget = QTabWidget()
@@ -534,6 +535,24 @@ class MainTab(QWidget, MainEnv):
                     else:
                         self.add_log(
                             f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
+                if self.env.ADD_TO_GROUP_ID is not None:
+                    self.add_log(
+                        f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в выбранное сообщество...")
+                    add_params = {
+                        'audio_id': track_info['id'],
+                        'owner_id': track_info['owner_id'],
+                        'group_id': self.env.ADD_TO_GROUP_ID
+                    }
+                    if use_audio_links and track_info['access_key'] is not None:
+                        add_params['access_key'] = track_info['access_key']
+                    try:
+                        vk_session.method("audio.add", add_params)
+                    except vk_api.VkApiError as e:
+                        self.add_log(
+                            f"Не получается добавить трек в сообщество, ошибка: \"{e}\". Пропускаю трек...")
+                    else:
+                        self.add_log(
+                            f"Успешно добавил в сообщество: \"{track_info['artist']} - {track_info['title']}\"")
                 if use_audio_links:
                     self.add_log(f"Успешно добавил в плейлист: \"id: {track_info['id']}\"")
                 else:
@@ -761,6 +780,7 @@ class SettingsTab(QWidget, MainEnv):
         self.reverse = QCheckBox()
         self.strict_search = QCheckBox()
         self.add_to_library = QCheckBox()
+        self.add_to_group = QLineEdit()
         self.bypass_captcha = QCheckBox()
         # self.update_playlist = QCheckBox()
         # Creating line edits for the string and integer environment variables
@@ -779,6 +799,7 @@ class SettingsTab(QWidget, MainEnv):
         self.reverse.setChecked(self.env.REVERSE)
         self.strict_search.setChecked(self.env.STRICT_SEARCH)
         self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
+        self.add_to_group.setText(str(self.env.ADD_TO_GROUP_ID))
         # self.update_playlist.setChecked(self.env.UPDATE_PLAYLIST)
         self.vk_token.setText(self.env.VK_TOKEN)
         self.timeout_after_error.setText(str(self.env.TIMEOUT_AFTER_ERROR))
@@ -796,6 +817,7 @@ class SettingsTab(QWidget, MainEnv):
         self.strict_search.setToolTip(
             "Искать только точные совпадения, если выключено может добавить ремикс или 'перезалив' оригинальной композиции (STRICT_SEARCH)")
         self.add_to_library.setToolTip("Добавлять треки в Мои Аудиозаписи (ADD_TO_LIBRARY)")
+        self.add_to_group.setToolTip("Добавлять треки в сообщество с указанным ID. Если пусто, то опция выключена. (ADD_TO_GROUP_ID)")
         # self.update_playlist.setToolTip("Обновлять плейлист, если он уже существует (UPDATE_PLAYLIST)")
         self.vk_token.setToolTip("Токен VK API, через него утилита получает доступ к вашим аудиозаписям (VK_TOKEN)")
         self.timeout_after_error.setToolTip("Задержка после ошибки, сек (TIMEOUT_AFTER_ERROR)")
@@ -818,6 +840,7 @@ class SettingsTab(QWidget, MainEnv):
         self.layout.addRow("В обратном порядке", self.reverse)
         self.layout.addRow("Только точные совпадения", self.strict_search)
         self.layout.addRow("Добавлять в Мои Аудиозаписи", self.add_to_library)
+        self.layout.addRow("Добавить в VK Сообщество с ID", self.add_to_group)
         # self.layout.addRow("Обновлять существующий плейлист", self.update_playlist)
         self.layout.addRow("Задержка после ошибок, сек", self.timeout_after_error)
         self.layout.addRow("Задержка после капчи, сек", self.timeout_after_captcha)
@@ -851,6 +874,7 @@ class SettingsTab(QWidget, MainEnv):
         set_key(config_path, "REVERSE", "1")
         set_key(config_path, "STRICT_SEARCH", "0")
         set_key(config_path, "ADD_TO_LIBRARY", "0")
+        set_key(config_path, "ADD_TO_GROUP_ID", "")
         set_key(config_path, "VK_TOKEN", "")
         set_key(config_path, "TIMEOUT_AFTER_ERROR", "1")
         set_key(config_path, "TIMEOUT_AFTER_CAPTCHA", "0")
@@ -868,6 +892,7 @@ class SettingsTab(QWidget, MainEnv):
         self.reverse.setChecked(self.env.REVERSE)
         self.strict_search.setChecked(self.env.STRICT_SEARCH)
         self.add_to_library.setChecked(self.env.ADD_TO_LIBRARY)
+        self.add_to_group.setText(str(self.env.ADD_TO_GROUP_ID))
         self.vk_token.setText(self.env.VK_TOKEN)
         self.timeout_after_error.setText(str(self.env.TIMEOUT_AFTER_ERROR))
         self.timeout_after_captcha.setText(str(self.env.TIMEOUT_AFTER_CAPTCHA))
@@ -884,6 +909,7 @@ class SettingsTab(QWidget, MainEnv):
         reverse = "1" if self.reverse.isChecked() else "0"
         strict_search = "1" if self.strict_search.isChecked() else "0"
         add_to_library = "1" if self.add_to_library.isChecked() else "0"
+        add_to_group_id = self.add_to_group.text()
         # update_playlist = "1" if self.update_playlist.isChecked() else "0"
         # If tracklist mode is selected, set all the other modes to 0
         if self.tracklist_mode.isChecked():
@@ -903,6 +929,7 @@ class SettingsTab(QWidget, MainEnv):
         set_key(config_path, "REVERSE", reverse)
         set_key(config_path, "STRICT_SEARCH", strict_search)
         set_key(config_path, "ADD_TO_LIBRARY", add_to_library)
+        set_key(config_path, "ADD_TO_GROUP_ID", add_to_group_id)
         set_key(config_path, "VK_TOKEN", vk_token)
         # set_key(config_path, "UPDATE_PLAYLIST", update_playlist)
         set_key(config_path, "TIMEOUT_AFTER_ERROR", timeout_after_error)
