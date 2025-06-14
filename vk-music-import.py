@@ -282,8 +282,12 @@ class MainTab(QWidget, MainEnv):
         # Open tracklist
         self.add_log("Загружаю треклист...")
         try:
-            with open("tracklist.txt", "r", encoding="utf-8") as f:
-                text_lines = f.readlines()
+            try:
+                with open("tracklist.txt", "r", encoding="utf-8") as f:
+                    text_lines = f.readlines()
+            except UnicodeDecodeError:
+                with open("tracklist.txt", "r", encoding="cp1251") as f:
+                    text_lines = f.readlines()
         except FileNotFoundError:
             self.add_log("Не найден треклист (tracklist.txt). Вы не забыли его предварительно создать?")
             return
@@ -535,7 +539,7 @@ class MainTab(QWidget, MainEnv):
                     else:
                         self.add_log(
                             f"Успешно добавил в мои аудиозаписи: \"{track_info['artist']} - {track_info['title']}\"")
-                if self.env.ADD_TO_GROUP_ID is not None:
+                if len(self.env.ADD_TO_GROUP_ID or '') > 0:
                     self.add_log(
                         f"Добавляю \"{track_info['artist']} - {track_info['title']}\" (id: {track_info['id']}) в выбранное сообщество...")
                     add_params = {
