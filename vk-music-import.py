@@ -2,7 +2,7 @@
 Imports music to VK Music from Track list.
 
 AUTH:
-https://oauth.vk.com/oauth/authorize?client_id=6121396&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
+https://oauth.vk.com/oauth/authorize?client_id=6287487&scope=8&redirect_uri=https://oauth.vk.com/blank.html&display=page&response_type=token&revoke=1&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991
 
 """
 import csv
@@ -85,7 +85,7 @@ class MainWindow(QWidget):
     def __init__(self):
         super().__init__()
         # Setting the window title and size
-        self.setWindowTitle("VK Music Import (v1.1 beta)")
+        self.setWindowTitle("VK Music Import (v1.2 beta)")
         self.resize(600, 300)
         # Creating a tab widget
         self.tab_widget = QTabWidget()
@@ -977,24 +977,22 @@ class SettingsTab(QWidget, MainEnv):
         self.token_dialog.exec_()
 
     def open_vk_authorization_link(self):
-        link = 'https://oauth.vk.com/oauth/authorize?client_id=6121396' \
+        link = 'https://oauth.vk.com/oauth/authorize?client_id=6287487' \
                '&scope=audio,offline' \
                '&redirect_uri=https://oauth.vk.com/blank.html' \
                '&display=page' \
                '&response_type=token' \
-               '&revoke=1' \
-               '&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991'
+               '&revoke=1'
         QDesktopServices.openUrl(QUrl(link))
         self.input_token_url()
 
     def copy_vk_authorization_link(self):
-        link = 'https://oauth.vk.com/oauth/authorize?client_id=6121396' \
+        link = 'https://oauth.vk.com/oauth/authorize?client_id=6287487' \
                '&scope=audio,offline' \
                '&redirect_uri=https://oauth.vk.com/blank.html' \
                '&display=page' \
                '&response_type=token' \
-               '&revoke=1' \
-               '&slogin_h=23a7bd142d757e24f9.93b0910a902d50e507&__q_hash=fed6a6c326a5673ad33facaf442b3991'
+               '&revoke=1'
         clipboard = QApplication.clipboard()
         clipboard.setText(link, QClipboard.Clipboard)
         self.input_token_url()
