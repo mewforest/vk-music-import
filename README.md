@@ -20,6 +20,10 @@
 <img style="float: left; height: 250px" src="https://github.com/mewforest/vk-music-import/assets/15357833/9c06eb70-61f1-440e-83fd-50d3234b73a2">
 <img style="float: left; height: 250px" src="https://github.com/mewforest/vk-music-import/assets/15357833/30db41d3-6886-49c9-a711-9a2b04a44954">
 
+## Статус проекта
+
+Программа работает (на момент 05.2026), но больше поддерживаться не будет. Последние активные дни были в 2022-2024г, и это был классный опыт! Пора двигаться дальше, всем спасибо за участие, подписывайтесь - https://t.me/mewnotes <3
+
 ## Как запустить? (для обычных пользователей)
 
 Инструкция по использованию на Windows:
